@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SteamDB - Sales; Ultimate Enhancer
 // @namespace    https://steamdb.info/
-// @version      1.4.1
+// @version      1.4.2
 // @description  Комплексное улучшение для SteamDB: фильтры по языкам, спискам, дате, РРЦ, конвертация валют, расширенная информация об играх, калькулятор желаемого, фильтры по % от ист. минимума.
 // @author       0wn3df1x
 // @license      MIT
@@ -16,6 +16,7 @@
 // @grant        GM_getValue
 // @connect      api.steampowered.com
 // @connect      gist.githubusercontent.com
+// @connect      partner.steamgames.com
 // ==/UserScript==
 
 (function() {
@@ -31,15 +32,59 @@
     const DEFAULT_EXCHANGE_RATE = 0.19;
     const PAGE_RELOAD_DELAY = 3000;
 
+    // Словари для маппинга валют SteamDB
+    const STEAMDB_COUNTRY_MAP = {
+        'us': { code: 1, iso: 'usd', apiCC: 'US', name: 'US Dollar' },
+        'eu': { code: 3, iso: 'eur', apiCC: 'DE', name: 'Euro' },
+        'ar': { code: 1, iso: 'usd', apiCC: 'AR', name: 'LATAM USD' },
+        'au': { code: 21, iso: 'aud', apiCC: 'AU', name: 'Australian Dollar' },
+        'br': { code: 7, iso: 'brl', apiCC: 'BR', name: 'Brazilian Real' },
+        'uk': { code: 2, iso: 'gbp', apiCC: 'GB', name: 'British Pound' },
+        'ca': { code: 20, iso: 'cad', apiCC: 'CA', name: 'Canadian Dollar' },
+        'cl': { code: 25, iso: 'clp', apiCC: 'CL', name: 'Chilean Peso' },
+        'cn': { code: 23, iso: 'cny', apiCC: 'CN', name: 'Chinese Yuan' },
+        'az': { code: 1, iso: 'usd', apiCC: 'AZ', name: 'CIS USD' },
+        'co': { code: 27, iso: 'cop', apiCC: 'CO', name: 'Colombian Peso' },
+        'cr': { code: 40, iso: 'crc', apiCC: 'CR', name: 'Costa Rican Colon' },
+        'hk': { code: 29, iso: 'hkd', apiCC: 'HK', name: 'Hong Kong Dollar' },
+        'in': { code: 24, iso: 'inr', apiCC: 'IN', name: 'Indian Rupee' },
+        'id': { code: 10, iso: 'idr', apiCC: 'ID', name: 'Indonesian Rupiah' },
+        'il': { code: 35, iso: 'ils', apiCC: 'IL', name: 'Israeli New Shekel' },
+        'jp': { code: 8, iso: 'jpy', apiCC: 'JP', name: 'Japanese Yen' },
+        'kz': { code: 37, iso: 'kzt', apiCC: 'KZ', name: 'Kazakhstani Tenge' },
+        'kw': { code: 38, iso: 'kwd', apiCC: 'KW', name: 'Kuwaiti Dinar' },
+        'my': { code: 11, iso: 'myr', apiCC: 'MY', name: 'Malaysian Ringgit' },
+        'mx': { code: 19, iso: 'mxn', apiCC: 'MX', name: 'Mexican Peso' },
+        'nz': { code: 22, iso: 'nzd', apiCC: 'NZ', name: 'New Zealand Dollar' },
+        'no': { code: 9, iso: 'nok', apiCC: 'NO', name: 'Norwegian Krone' },
+        'pe': { code: 26, iso: 'pen', apiCC: 'PE', name: 'Peruvian Sol' },
+        'ph': { code: 12, iso: 'php', apiCC: 'PH', name: 'Philippine Peso' },
+        'pl': { code: 6, iso: 'pln', apiCC: 'PL', name: 'Polish Zloty' },
+        'qa': { code: 39, iso: 'qar', apiCC: 'QA', name: 'Qatari Riyal' },
+        'ru': { code: 5, iso: 'rub', apiCC: 'RU', name: 'Russian Ruble' },
+        'sa': { code: 31, iso: 'sar', apiCC: 'SA', name: 'Saudi Riyal' },
+        'sg': { code: 13, iso: 'sgd', apiCC: 'SG', name: 'Singapore Dollar' },
+        'za': { code: 28, iso: 'zar', apiCC: 'ZA', name: 'South African Rand' },
+        'pk': { code: 1, iso: 'usd', apiCC: 'PK', name: 'South Asia USD' },
+        'kr': { code: 16, iso: 'krw', apiCC: 'KR', name: 'South Korean Won' },
+        'ch': { code: 4, iso: 'chf', apiCC: 'CH', name: 'Swiss Franc' },
+        'tw': { code: 30, iso: 'twd', apiCC: 'TW', name: 'Taiwan Dollar' },
+        'th': { code: 14, iso: 'thb', apiCC: 'TH', name: 'Thai Baht' },
+        'tr': { code: 1, iso: 'usd', apiCC: 'TR', name: 'MENA USD' },
+        'ae': { code: 32, iso: 'aed', apiCC: 'AE', name: 'U.A.E. Dirham' },
+        'ua': { code: 18, iso: 'uah', apiCC: 'UA', name: 'Ukrainian Hryvnia' },
+        'uy': { code: 41, iso: 'uyu', apiCC: 'UY', name: 'Uruguayan Peso' },
+        'vn': { code: 15, iso: 'vnd', apiCC: 'VN', name: 'Vietnamese Dong' }
+    };
+
     let collectedAppIds = new Set();
     let tooltip = null;
     let hoverTimer = null;
     let gameData = {};
     let activeLanguageFilter = null;
     let totalGamesOnPage = 0;
-    let processedRuGames = 0;
+    let processedLocalGames = 0;
     let processedUsGames = 0;
-    let processedSingleStageGames = 0;
 
     let progressContainer = null;
     let requestQueue = [];
@@ -51,11 +96,13 @@
     let processButton = null;
     let currentProcessingStage = '';
 
-    let isRuModeActive = false;
+    let steamPricingMatrices = null; // Хранилище матриц Valve
+    let currentLocalCC = 'ru'; // Текущая выбранная валюта на странице
+
     let activeRrcFilters = {
-        lower: false,
-        equal: false,
-        higher: false
+        valve_lower: false, valve_equal: false, valve_higher: false,
+        parity_lower: false, parity_equal: false, parity_higher: false,
+        fx_lower: false, fx_equal: false, fx_higher: false
     };
 
     let activeShowDiscountFilters = { blue: false, green: false, purple: false };
@@ -78,25 +125,23 @@
 
     const PROCESS_BUTTON_TEXT = {
         idle: "Обработать игры",
-        processing_ru: "Сбор RU данных...",
+        processing_local: "Сбор локальных данных...",
         processing_us: "Сбор US данных...",
-        processing_single: "Сбор данных...",
         done: "Обработка завершена",
         calculate_wishlist_idle: "Высчитать"
     };
 
     const STATUS_TEXT = {
         ready_to_process: "Нажмите обработать игры для начала работы",
-        processing_ru: "Идет сбор RU данных...",
+        processing_local: "Идет сбор локальных данных...",
         processing_us: "Идет сбор US данных...",
-        processing_single: "Идет сбор данных...",
         processing_rrc: "Расчет РРЦ...",
+        fetching_matrix: "Получение матрицы Steam...",
         done: "Обработка завершена. Фильтры применены.",
-        done_no_rrc: "Обработка данных завершена.",
-        rrc_disabled: "Нажмите обработать игры для начала работы (РРЦ анализ доступен только для российской валюты)",
         error: "Произошла ошибка.",
         changing_entries_prefix: "Меняем на All... ",
-        calculating_wishlist: "Анализ цен желаемого..."
+        calculating_wishlist: "Анализ цен желаемого...",
+        rrc_disabled: "Нажмите обработать игры для начала (Сравнение цен недоступно для USD)"
     };
 
     const styles = `
@@ -142,42 +187,31 @@
     .early-access-no { color: #929396; }
     .no-data { color: #929396; }
     tr.app td:first-child { position: relative; }
-    .filter-submit-wrap {
-        position: static !important;
-    }
+    .filter-submit-wrap { position: static !important; }
 
     .rrc-display-container {
         position: absolute;
-        width: 100px;
-        left: -100px;
+        width: 175px;
+        left: -175px;
         top: -1px;
         height: 100%;
         box-sizing: border-box;
         background-color: var(--body-bg-color, #161920);
         border-top: 1px solid var(--border-color-2, hsl(216, 25%, 16%));
-        border-left: none;
-        border-right: none;
-        border-radius: 0;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        padding: 0;
-        font-size: 11px;
-        color: var(--body-color, #ddd);
-        text-align: center;
-        white-space: normal;
-        overflow: hidden;
-        z-index: 3;
-        pointer-events: none;
+        border-left: none; border-right: none; border-radius: 0;
+        display: flex; flex-direction: row; justify-content: space-around; align-items: center;
+        padding: 0 2px; font-size: 10px; color: var(--body-color, #ddd);
+        text-align: center; overflow: hidden; z-index: 3; pointer-events: none;
     }
-    .rrc-display-container .rrc-content-wrapper { padding: 1px 3px; }
-    .rrc-display-container .rrc-text { font-weight: 700; font-style: normal; padding: 1px 5px; border-radius: 3px; display: inline-block; line-height: 1.2; margin-bottom: 2px; }
-    .rrc-display-container .rrc-text.equal { background-color: #4c6b22 !important; color: #c0ef15 !important; }
-    .rrc-display-container .rrc-text.higher { background-color: #cb2431 !important; color: #fde2e4 !important; }
-    .rrc-display-container .rrc-text.lower { background-color: #1566b7 !important; color: #d1e5fa !important; }
-    .rrc-display-container .rrc-details { color: var(--muted-color, #999); font-size: 10px; line-height: 1.1; display: block; }
-    .rrc-display-container .rrc-no-data { color: var(--muted-color, #999); font-style: italic; font-size: 11px; padding: 2px 0; }
+    .rrc-col { display: flex; flex-direction: column; align-items: center; width: 33%; padding: 0 2px; }
+    .rrc-header { font-size: 9px; color: #8f98a0; margin-bottom: 2px; line-height: 1; }
+    .rrc-text { font-weight: 700; font-style: normal; padding: 2px 4px; border-radius: 3px; display: inline-block; line-height: 1.1; margin-bottom: 2px; width: 100%; }
+    .rrc-text.equal { background-color: #4c6b22 !important; color: #c0ef15 !important; }
+    .rrc-text.higher { background-color: #cb2431 !important; color: #fde2e4 !important; }
+    .rrc-text.lower { background-color: #1566b7 !important; color: #d1e5fa !important; }
+    .rrc-details { color: var(--muted-color, #999); font-size: 9px; line-height: 1; display: block; white-space: nowrap; }
+    .rrc-no-data { color: var(--muted-color, #999); font-style: italic; font-size: 10px; padding: 2px 0; width: 100%; }
+
     #rrc-filter-group.disabled-filter { opacity: 0.5; pointer-events: none; }
     #rrc-filter-group.disabled-filter .btn { cursor: not-allowed; }
 
@@ -185,55 +219,17 @@
     .steamdb-custom-discount-filters .filter-block-title { color: #c6d4df; font-size: 14px; font-weight: 500; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid #2a3f5a;}
     .steamdb-custom-discount-filters .filter-block-subtitle { color: #a0b0c0; font-size: 13px; font-weight: 400; margin-top: 10px; margin-bottom: 6px; }
 
-    .discount-filter-row-steamdb {
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        align-items: center;
-        gap: 8px;
-        padding: 1px 0;
-        font-size: 13px;
-        min-height: 24px;
-    }
-    .discount-filter-row-steamdb .steamy-checkbox-control {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        color: #9fbbcb;
-        cursor: pointer;
-        font-weight: normal;
-        padding: 0;
-        white-space: nowrap;
-    }
-    .discount-filter-row-steamdb .steamy-checkbox-control:hover,
-    .discount-filter-row-steamdb .steamy-checkbox-control:focus-within {
-        color: #fff;
-    }
-    .discount-filter-row-steamdb .steamy-checkbox-control input[type="checkbox"] {
-        margin: 0 4px 0 0;
-        vertical-align: middle;
-    }
-    .discount-filter-row-steamdb .steamy-checkbox-control:first-of-type {
-        justify-self: start;
-        padding-left: 0;
-    }
-    .discount-filter-label-text-steamdb {
-        text-align: left;
-        padding-left: 5px;
-        color: #c6d4df;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        line-height: normal;
-        vertical-align: middle;
-    }
-    .discount-filter-row-steamdb .steamy-checkbox-control:last-of-type {
-        justify-self: end;
-    }
+    .discount-filter-row-steamdb { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 1px 0; font-size: 13px; min-height: 24px; }
+    .discount-filter-row-steamdb .steamy-checkbox-control { display: inline-flex; align-items: center; gap: 5px; color: #9fbbcb; cursor: pointer; font-weight: normal; padding: 0; white-space: nowrap; }
+    .discount-filter-row-steamdb .steamy-checkbox-control:hover, .discount-filter-row-steamdb .steamy-checkbox-control:focus-within { color: #fff; }
+    .discount-filter-row-steamdb .steamy-checkbox-control input[type="checkbox"] { margin: 0 4px 0 0; vertical-align: middle; }
+    .discount-filter-row-steamdb .steamy-checkbox-control:first-of-type { justify-self: start; padding-left: 0; }
+    .discount-filter-label-text-steamdb { text-align: left; padding-left: 5px; color: #c6d4df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: normal; vertical-align: middle; }
+    .discount-filter-row-steamdb .steamy-checkbox-control:last-of-type { justify-self: end; }
     .tooltipped-blue input[type="checkbox"]:checked { accent-color: #1566b7; }
     .tooltipped-green input[type="checkbox"]:checked { accent-color: #4c6b22; }
     .tooltipped-purple input[type="checkbox"]:checked { accent-color: #74002d; }
 
-    .steamy-checkbox-control.active { }
     #wishlist-calculator-group .group-title { font-size: 11px; color: #a0a0a0; text-transform: none; margin-bottom: 6px; }
     #wishlist-calculator-group .btn { width: 100%; justify-content: center; }
 
@@ -761,17 +757,197 @@
         }
     }
 
-    function isRuCurrencySelected() {
+    function getCurrentCurrency() {
         const currencySelector = document.querySelector('details#js-select-cc');
         if (currencySelector) {
             const checkedRadio = currencySelector.querySelector('input[name="cc"]:checked');
-            if (checkedRadio) { return checkedRadio.value === 'ru'; }
-            return currencySelector.dataset.default === 'ru';
+            if (checkedRadio) { return checkedRadio.value; }
+            return currencySelector.dataset.default || 'us';
         }
-        const priceHeader = document.querySelector('th[data-name="price"] img[src*="/ru.svg"]');
-        if (priceHeader) return true;
         const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get('cc') === 'ru';
+        if (urlParams.get('cc')) return urlParams.get('cc');
+        return 'us';
+    }
+
+    function updateUiForCurrencyMode() {
+        const rrcFilterGroup = document.querySelector('#rrc-filter-control-group');
+        const statusIndicator = document.querySelector('.steamdb-enhancer .status-indicator');
+
+        if (rrcFilterGroup) {
+            rrcFilterGroup.style.display = currentLocalCC !== 'us' ? '' : 'none';
+            if (currentLocalCC === 'us') {
+                activeRrcFilters = {
+                    valve_lower: false, valve_equal: false, valve_higher: false,
+                    parity_lower: false, parity_equal: false, parity_higher: false,
+                    fx_lower: false, fx_equal: false, fx_higher: false
+                };
+                rrcFilterGroup.querySelectorAll('.btn.active').forEach(b => b.classList.remove('active'));
+            }
+        }
+
+        if (statusIndicator && !isProcessingStarted) {
+            statusIndicator.textContent = currentLocalCC !== 'us' ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled;
+        }
+
+        if (document.querySelector('tr.app[data-appid]')) {
+            applyAllFilters();
+            if (currentLocalCC === 'us') {
+                document.querySelectorAll('.rrc-display-container').forEach(el => el.remove());
+            }
+        }
+    }
+
+    function updateProgress() {
+        const progressBar = document.querySelector('.steamdb-enhancer .progress-bar');
+        const progressCountEl = document.querySelector('.steamdb-enhancer .progress-count');
+        const progressPercentEl = document.querySelector('.steamdb-enhancer .progress-percent');
+        if (!progressBar || !progressCountEl || !progressPercentEl) return;
+        let overallPercent = 0; let countText = "0/0";
+
+        if (totalGamesOnPage > 0) {
+            if (currentLocalCC === 'us') {
+                overallPercent = (processedLocalGames / totalGamesOnPage) * 100;
+                countText = `Обработано: ${processedLocalGames}/${totalGamesOnPage}`;
+            } else {
+                if (currentProcessingStage === 'LOCAL') {
+                    overallPercent = (processedLocalGames / totalGamesOnPage) * 50;
+                    countText = `Этап 1 (Лок.): ${processedLocalGames}/${totalGamesOnPage}`;
+                } else if (currentProcessingStage === 'US') {
+                    overallPercent = 50 + (processedUsGames / totalGamesOnPage) * 50;
+                    countText = `Этап 2 (США): ${processedUsGames}/${totalGamesOnPage}`;
+                }
+            }
+        }
+        overallPercent = Math.min(overallPercent, 100);
+        progressBar.style.width = `${overallPercent}%`;
+        progressCountEl.textContent = countText;
+        progressPercentEl.textContent = `(${Math.round(overallPercent)}%)`;
+
+        if (!isProcessingStarted && processButton) {
+            const processBtnTextEl = document.getElementById('process-btn-text');
+            if (processBtnTextEl) processBtnTextEl.textContent = PROCESS_BUTTON_TEXT.idle;
+            processButton.disabled = false;
+        }
+    }
+
+    async function init() {
+        currentLocalCC = getCurrentCurrency();
+        await fetchAndStoreTags();
+
+        const style = document.createElement('style');
+        style.textContent = styles;
+        document.head.append(style);
+
+        createTagFilterModal();
+
+        const header = document.querySelector('.header-title');
+        if (header) {
+            const filtersContainer = createFiltersContainer();
+            header.parentNode.insertBefore(filtersContainer, header.nextElementSibling);
+            processButton = document.getElementById('process-btn');
+            if(processButton) {
+                processButton.addEventListener('click', () => {
+                    const statusIndicator = document.querySelector('.steamdb-enhancer .status-indicator');
+                    ensureAllEntriesAndCountdown(startDataCollection, statusIndicator, processButton);
+                });
+            }
+            filtersContainer.addEventListener('click', handleMainPanelClick);
+
+            document.getElementById('review-min-count').addEventListener('input', handleReviewFilterChange);
+            document.getElementById('review-max-count').addEventListener('input', handleReviewFilterChange);
+            document.getElementById('review-min-rating').addEventListener('input', handleReviewFilterChange);
+            document.getElementById('review-max-rating').addEventListener('input', handleReviewFilterChange);
+
+            document.getElementById('total-sort-checkbox').addEventListener('change', (event) => {
+                isTotalSortEnabled = event.target.checked;
+                applyTotalSort();
+            });
+
+        } else {
+            return;
+        }
+
+        const steamDbFilterForm = document.getElementById('js-filters');
+        let originalDiscountBlock = null;
+        if (steamDbFilterForm) {
+            const allFilterBlocks = steamDbFilterForm.querySelectorAll('div.filter-block');
+            for (let block of allFilterBlocks) {
+                if (block.querySelector('input[id^="js-discounts-"]')) {
+                    originalDiscountBlock = block;
+                    break;
+                }
+            }
+        }
+
+        if (originalDiscountBlock) {
+            setupCustomDiscountFilters(originalDiscountBlock);
+            originalDiscountBlock.addEventListener('change', handleDiscountFilterChange);
+        }
+
+        document.querySelectorAll('tr.app[data-appid]').forEach(row => processAndStyleAtlDiscount(row));
+        const observerOptions = { childList: true, subtree: true };
+        const tableBody = document.querySelector('#DataTables_Table_0 tbody');
+        if (tableBody) {
+            const tableObserver = new MutationObserver((mutationsList) => {
+                for (const mutation of mutationsList) {
+                    if (mutation.type === 'childList') {
+                        mutation.addedNodes.forEach(node => {
+                            if (node.nodeType === Node.ELEMENT_NODE && node.matches('tr.app[data-appid]')) {
+                                processAndStyleAtlDiscount(node);
+                            }
+                        });
+                    }
+                }
+                if (typeof $ !== 'undefined' && $.fn.dataTable && $.fn.dataTable.isDataTable('#DataTables_Table_0')) {
+                    $('#DataTables_Table_0').DataTable().rows().nodes().to$().each(function() {
+                        processAndStyleAtlDiscount(this);
+                    });
+                }
+            });
+            tableObserver.observe(tableBody, observerOptions);
+            if (typeof $ !== 'undefined' && $.fn.dataTable) {
+                $(document).on('draw.dt', function (e, settings) {
+                    if (settings.nTable.id === 'DataTables_Table_0') {
+                        $('#DataTables_Table_0').DataTable().rows().nodes().to$().each(function() {
+                            processAndStyleAtlDiscount(this);
+                        });
+                    }
+                });
+            }
+        }
+
+        document.querySelector('#DataTables_Table_0 tbody')?.addEventListener('mouseover', handleHover);
+
+        const currencyDropdown = document.querySelector('details#js-select-cc');
+        if (currencyDropdown) {
+            const observer = new MutationObserver((mutationsList) => {
+                for (let mutation of mutationsList) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'data-default' ||
+                        mutation.target.nodeName === 'INPUT' && mutation.target.type === 'radio' && mutation.target.name === 'cc') {
+                        const newCC = getCurrentCurrency();
+                        if (newCC !== currentLocalCC) {
+                            currentLocalCC = newCC;
+                            reinitializePanel();
+                        }
+                        break;
+                    }
+                }
+            });
+            observer.observe(currencyDropdown, { attributes: true, childList: true, subtree: true });
+        }
+
+        const typeDropdown = document.getElementById('js-select-type');
+        if (typeDropdown) {
+            const typeObserver = new MutationObserver(() => {
+                reinitializePanel();
+            });
+            typeDropdown.querySelectorAll('input[name="displayOnly"]').forEach(radio => {
+                typeObserver.observe(radio, { attributes: true, attributeFilter: ['checked'] });
+            });
+            typeObserver.observe(typeDropdown, { childList: true, subtree: true });
+        }
+
+        updateButtonAndStatus(PROCESS_BUTTON_TEXT.idle, currentLocalCC !== 'us' ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled, false, true);
     }
 
     function calculateRecommendedRubPrice(pUSD) {
@@ -782,11 +958,78 @@
 
     function getPriceInCents(purchaseOption) {
         if (!purchaseOption) return null;
-        if (purchaseOption.discount_pct > 0 && purchaseOption.original_price_in_cents) {
-            return parseInt(purchaseOption.original_price_in_cents, 10);
+        if (purchaseOption.discount_pct > 0 && purchaseOption.original_price_in_cents) return parseInt(purchaseOption.original_price_in_cents, 10);
+        if (purchaseOption.final_price_in_cents) return parseInt(purchaseOption.final_price_in_cents, 10);
+        return null;
+    }
+
+    async function fetchSteamPricingMatrix() {
+        if (steamPricingMatrices) return steamPricingMatrices;
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: "https://partner.steamgames.com/pricing/explorer",
+                timeout: 15000,
+                onload: function(response) {
+                    try {
+                        const html = response.responseText;
+                        let matrices = [];
+                        let searchStr = html.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                        let offset = 0;
+                        while (true) {
+                            const startIdx = searchStr.indexOf('"data":[', offset);
+                            if (startIdx === -1) break;
+                            const arrayStart = startIdx + 7;
+                            let openBrackets = 0; let endIdx = -1; let inString = false;
+                            for (let i = arrayStart; i < searchStr.length; i++) {
+                                const char = searchStr[i];
+                                if (char === '"' && searchStr[i-1] !== '\\') inString = !inString;
+                                if (!inString) {
+                                    if (char === '[') openBrackets++;
+                                    else if (char === ']') {
+                                        openBrackets--;
+                                        if (openBrackets === 0) { endIdx = i; break; }
+                                    }
+                                }
+                            }
+                            if (endIdx !== -1) {
+                                try {
+                                    const arr = JSON.parse(searchStr.substring(arrayStart, endIdx + 1));
+                                    if (arr.length > 0 && arr[0].usd_price !== undefined && arr[0].convert_method !== undefined) {
+                                        matrices = arr; break;
+                                    }
+                                } catch (e) {}
+                            }
+                            offset = startIdx + 8;
+                        }
+
+                        if (matrices.length > 0) {
+                            steamPricingMatrices = {
+                                valve: matrices.filter(m => m.convert_method === 1),
+                                parity: matrices.filter(m => m.convert_method === 2),
+                                fx: matrices.filter(m => m.convert_method === 3)
+                            };
+                            resolve(steamPricingMatrices);
+                        } else resolve(null);
+                    } catch (e) { resolve(null); }
+                },
+                onerror: () => resolve(null), ontimeout: () => resolve(null)
+            });
+        });
+    }
+
+    function getRecCents(matrix, baseUsdCents, currencyCode) {
+        if (!matrix || matrix.length === 0) return null;
+        if (currencyCode === 1) return baseUsdCents;
+        let closest = matrix[0];
+        let minDiff = Math.abs((matrix[0].usd_price || 0) - baseUsdCents);
+        for (let row of matrix) {
+            let diff = Math.abs((row.usd_price || 0) - baseUsdCents);
+            if (diff < minDiff) { minDiff = diff; closest = row; }
         }
-        if (purchaseOption.final_price_in_cents) {
-            return parseInt(purchaseOption.final_price_in_cents, 10);
+        if (closest && closest.currency_prices) {
+            const cp = closest.currency_prices.find(c => c.currency_code === currencyCode);
+            if (cp) return cp.price;
         }
         return null;
     }
@@ -795,46 +1038,48 @@
         const container = document.createElement('div');
         container.className = 'rrc-display-container';
         const data = gameData[appId];
-        let rrcStatus = 'no_data';
-        let htmlContent = `<div class="rrc-content-wrapper"><span class="rrc-no-data">Нет данных РРЦ</span></div>`;
+        let htmlContent = `<div class="rrc-no-data">Нет данных РРЦ</div>`;
+        data.rrc_statuses = { valve: 'no_data', parity: 'no_data', fx: 'no_data' };
 
-        if (isRuModeActive && data && typeof data.price_us_initial_cents === 'number' && typeof data.price_ru_initial_cents === 'number') {
-            const pUSD = data.price_us_initial_cents / 100;
-            const actualRubPrice = data.price_ru_initial_cents / 100;
-            const recommendedRubPrice = calculateRecommendedRubPrice(pUSD);
+        if (currentLocalCC !== 'us' && data && typeof data.price_us_initial_cents === 'number' && typeof data.price_local_initial_cents === 'number' && steamPricingMatrices) {
+            const usPriceCents = data.price_us_initial_cents;
+            const actualCents = data.price_local_initial_cents;
+            const cCode = STEAMDB_COUNTRY_MAP[currentLocalCC].code;
 
-            if (recommendedRubPrice !== null) {
-                const diff = actualRubPrice - recommendedRubPrice;
-                const diffPercent = recommendedRubPrice !== 0 ? (diff / recommendedRubPrice) * 100 : (diff > 0 ? Infinity : (actualRubPrice === 0 && recommendedRubPrice === 0 ? 0 : -Infinity));
-                let textClass = 'equal';
-                let symbol = '=';
-                if (diff > 0.01) {
-                    textClass = 'higher'; symbol = '>'; rrcStatus = 'higher';
-                } else if (diff < -0.01) {
-                    textClass = 'lower'; symbol = '<'; rrcStatus = 'lower';
-                } else {
-                    rrcStatus = 'equal';
-                }
-                htmlContent = `
-                    <div class="rrc-content-wrapper">
-                        <span class="rrc-text ${textClass}">${symbol} РРЦ</span>
-                        <span class="rrc-details">(${diffPercent !== Infinity && diffPercent !== -Infinity ? diffPercent.toFixed(0) + '%' : (diffPercent > 0 ? '>~' : '<~') }, ${diff.toFixed(0)} ₽)</span>
+            const buildCol = (header, matrixData, catName) => {
+                const recCents = getRecCents(matrixData, usPriceCents, cCode);
+                if (recCents === null) return `<div class="rrc-col"><div class="rrc-header">${header}</div><span class="rrc-no-data">N/A</span></div>`;
+
+                const diff = (actualCents - recCents) / 100;
+                const diffPercent = recCents !== 0 ? ((actualCents - recCents) / recCents) * 100 : (actualCents > 0 ? Infinity : 0);
+
+                let textClass = 'equal', symbol = '=', status = 'equal';
+                if (diff > 0.01) { textClass = 'higher'; symbol = '>'; status = 'higher'; }
+                else if (diff < -0.01) { textClass = 'lower'; symbol = '<'; status = 'lower'; }
+
+                data.rrc_statuses[catName] = status;
+
+                return `
+                    <div class="rrc-col">
+                        <div class="rrc-header">${header}</div>
+                        <span class="rrc-text ${textClass}">${symbol} ${header}</span>
+                        <span class="rrc-details">(${diffPercent !== Infinity && diffPercent !== -Infinity ? diffPercent.toFixed(0) + '%' : (diffPercent > 0 ? '>~' : '<~')})</span>
                     </div>`;
-            } else {
-                rrcStatus = 'no_rec_price';
-                htmlContent = `<div class="rrc-content-wrapper"><span class="rrc-no-data">Нет данных РРЦ (USD?)</span></div>`;
-            }
-        } else if (isRuModeActive && data && (!data.price_us_initial_cents || !data.price_ru_initial_cents)) {
-            rrcStatus = 'no_price_data';
+            };
+
+            htmlContent = buildCol('Курс', steamPricingMatrices.fx, 'fx') +
+                          buildCol('ППС', steamPricingMatrices.parity, 'parity') +
+                          buildCol('Valve', steamPricingMatrices.valve, 'valve');
+        } else if (currentLocalCC === 'us') {
+            data.rrc_statuses = { valve: 'not_applicable', parity: 'not_applicable', fx: 'not_applicable' };
         }
-        if (!isRuModeActive) rrcStatus = 'not_applicable';
-        if (data) gameData[appId].rrc_status = rrcStatus;
+
         container.innerHTML = htmlContent;
         return container;
     }
 
     function injectRrcDisplay(row) {
-        if (!isRuModeActive) return;
+        if (currentLocalCC === 'us') return;
         const appId = row.dataset.appid;
         if (!appId) return;
         const targetCell = row.querySelector('td:first-child');
@@ -846,7 +1091,7 @@
     }
 
     function injectAllRrcDisplays() {
-        if (!isRuModeActive) {
+        if (currentLocalCC === 'us') {
             document.querySelectorAll('.rrc-display-container').forEach(el => el.remove());
             return;
         }
@@ -858,14 +1103,26 @@
         container.className = 'steamdb-enhancer';
 
         let rrcFilterHTML = '';
-        if (isRuModeActive) {
+        if (currentLocalCC !== 'us') {
             rrcFilterHTML = `
             <div class="control-group" id="rrc-filter-control-group">
-                <div class="group-title">Фильтр РРЦ</div>
-                <div class="btn-group" id="rrc-filter-group">
-                    <button class="btn" data-filter-rrc="lower" title="Дешевле РРЦ">&lt; РРЦ</button>
-                    <button class="btn" data-filter-rrc="equal" title="Соответствует РРЦ">= РРЦ</button>
-                    <button class="btn" data-filter-rrc="higher" title="Дороже РРЦ">&gt; РРЦ</button>
+                <div class="group-title">Фильтры РРЦ</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                    <div class="btn-group" style="flex-direction: column;">
+                        <button class="btn" style="justify-content: center;" data-filter-rrc="valve_lower" title="Дешевле Valve">&lt; Valve</button>
+                        <button class="btn" style="justify-content: center;" data-filter-rrc="valve_equal" title="Соответствует Valve">= Valve</button>
+                        <button class="btn" style="justify-content: center;" data-filter-rrc="valve_higher" title="Дороже Valve">&gt; Valve</button>
+                    </div>
+                    <div class="btn-group" style="flex-direction: column;">
+                        <button class="btn" style="justify-content: center;" data-filter-rrc="parity_lower" title="Дешевле ППС">&lt; ППС</button>
+                        <button class="btn" style="justify-content: center;" data-filter-rrc="parity_equal" title="Соответствует ППС">= ППС</button>
+                        <button class="btn" style="justify-content: center;" data-filter-rrc="parity_higher" title="Дороже ППС">&gt; ППС</button>
+                    </div>
+                    <div class="btn-group" style="flex-direction: column;">
+                        <button class="btn" style="justify-content: center;" data-filter-rrc="fx_lower" title="Дешевле Курса">&lt; Курс</button>
+                        <button class="btn" style="justify-content: center;" data-filter-rrc="fx_equal" title="Соответствует Курсу">= Курс</button>
+                        <button class="btn" style="justify-content: center;" data-filter-rrc="fx_higher" title="Дороже Курса">&gt; Курс</button>
+                    </div>
                 </div>
             </div>`;
         }
@@ -886,7 +1143,7 @@
                 <svg class="btn-icon" viewBox="0 0 24 24"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.8.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg>
                 <span id="process-btn-text">${PROCESS_BUTTON_TEXT.idle}</span>
             </button>
-            <div class="status-indicator status-inactive">${isRuModeActive ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled}</div>
+            <div class="status-indicator status-inactive">${currentLocalCC !== 'us' ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled}</div>
         </div>
         <div class="progress-container"><div class="progress-bar"></div></div>
         <div class="progress-text">
@@ -966,7 +1223,7 @@
             </div>
             </div>`;
 
-        if (!isRuModeActive) {
+        if (currentLocalCC === 'us') {
             const rrcGroup = container.querySelector('#rrc-filter-control-group');
             if (rrcGroup) rrcGroup.classList.add('disabled-filter');
         }
@@ -1123,7 +1380,7 @@
             }
         }
 
-        if (isRuModeActive) {
+        if (currentLocalCC !== 'us') {
             const rrcBtn = event.target.closest('[data-filter-rrc]');
             if (rrcBtn) {
                 const filterType = rrcBtn.dataset.filterRrc;
@@ -1379,23 +1636,28 @@
                 visible = false;
             }
 
-            if (isRuModeActive && visible) {
-                const rrcFilterIsActive = activeRrcFilters.lower || activeRrcFilters.equal || activeRrcFilters.higher;
-                const allRrcFiltersSelected = activeRrcFilters.lower && activeRrcFilters.equal && activeRrcFilters.higher;
-                const noRrcFiltersSelected = !activeRrcFilters.lower && !activeRrcFilters.equal && !activeRrcFilters.higher;
+            if (currentLocalCC !== 'us' && visible) {
+                const checkCategory = (catName) => {
+                    const isLower = activeRrcFilters[`${catName}_lower`];
+                    const isEqual = activeRrcFilters[`${catName}_equal`];
+                    const isHigher = activeRrcFilters[`${catName}_higher`];
 
-                if (rrcFilterIsActive && !allRrcFiltersSelected && !noRrcFiltersSelected) {
-                    const rrcStatus = data?.rrc_status;
-                    if (!rrcStatus || rrcStatus === 'no_data' || rrcStatus === 'no_price_data' || rrcStatus === 'no_rec_price' || rrcStatus === 'not_applicable') {
-                        visible = false;
-                    } else {
-                        let match = false;
-                        if (activeRrcFilters.lower && rrcStatus === 'lower') match = true;
-                        if (activeRrcFilters.equal && rrcStatus === 'equal') match = true;
-                        if (activeRrcFilters.higher && rrcStatus === 'higher') match = true;
-                        if (!match) visible = false;
-                    }
-                }
+                    if (!isLower && !isEqual && !isHigher) return true;
+                    if (isLower && isEqual && isHigher) return true;
+
+                    const status = data?.rrc_statuses?.[catName];
+                    if (!status || status === 'no_data' || status === 'not_applicable') return false;
+
+                    if (isLower && status === 'lower') return true;
+                    if (isEqual && status === 'equal') return true;
+                    if (isHigher && status === 'higher') return true;
+
+                    return false;
+                };
+
+                visible = visible && checkCategory('valve');
+                visible = visible && checkCategory('parity');
+                visible = visible && checkCategory('fx');
             }
 
             if (visible) {
@@ -1493,7 +1755,7 @@
             const purchaseOption = item.best_purchase_option || item.purchase_options?.[0];
             gameData[item.id].tagids = item.tagids || [];
 
-            if (stage === 'RU' || (stage === 'SINGLE_FETCH' && isRuModeActive)) {
+            if (stage === 'LOCAL') {
                 if (!gameData[item.id].franchises) {
                     gameData[item.id].franchises = item.basic_info?.franchises?.map(f => f.name).join(', ');
                     gameData[item.id].percent_positive = item.reviews?.summary_filtered?.percent_positive;
@@ -1503,25 +1765,11 @@
                     gameData[item.id].language_support_russian = item.supported_languages?.find(l => l.elanguage === 8);
                     gameData[item.id].language_support_english = item.supported_languages?.find(l => l.elanguage === 0);
                 }
-                gameData[item.id].price_ru_initial_cents = getPriceInCents(purchaseOption);
-                gameData[item.id].price_ru_formatted_final = purchaseOption?.formatted_final_price;
-                if (stage === 'RU') processedRuGames++;
-                else processedSingleStageGames++;
+                gameData[item.id].price_local_initial_cents = getPriceInCents(purchaseOption);
+                processedLocalGames++;
             } else if (stage === 'US') {
                 gameData[item.id].price_us_initial_cents = getPriceInCents(purchaseOption);
-                gameData[item.id].price_us_formatted_final = purchaseOption?.formatted_final_price;
                 processedUsGames++;
-            } else if (stage === 'SINGLE_FETCH' && !isRuModeActive) {
-                if (!gameData[item.id].franchises) {
-                    gameData[item.id].franchises = item.basic_info?.franchises?.map(f => f.name).join(', ');
-                    gameData[item.id].percent_positive = item.reviews?.summary_filtered?.percent_positive;
-                    gameData[item.id].review_count = item.reviews?.summary_filtered?.review_count;
-                    gameData[item.id].is_early_access = item.is_early_access;
-                    gameData[item.id].short_description = item.basic_info?.short_description;
-                    gameData[item.id].language_support_russian = item.supported_languages?.find(l => l.elanguage === 8);
-                    gameData[item.id].language_support_english = item.supported_languages?.find(l => l.elanguage === 0);
-                }
-                processedSingleStageGames++;
             }
         });
         updateProgress();
@@ -1531,32 +1779,30 @@
         if (isProcessingQueue || !requestQueue.length) {
             if (isProcessingQueue) return;
 
-            // Логика завершения сбора данных
-            if (currentProcessingStage === 'RU' && processedRuGames >= totalGamesOnPage) {
-                // Завершили этап RU, переходим к US
-                currentProcessingStage = 'US';
-                updateButtonAndStatus(PROCESS_BUTTON_TEXT.processing_us, STATUS_TEXT.processing_us);
-                const usBatches = Array.from(collectedAppIds).reduce((acc, id, i) => {
-                    if (i % BATCH_SIZE === 0) acc.push([]);
-                    acc[acc.length - 1].push(id);
-                    return acc;
-                }, []);
-                requestQueue.push(...usBatches.map(batch => ({ batch, stage: 'US', lang: 'english', cc: 'US' })));
-                updateProgress();
-                await processRequestQueue();
+            if (currentProcessingStage === 'LOCAL' && processedLocalGames >= totalGamesOnPage) {
+                if (currentLocalCC !== 'us') {
+                    currentProcessingStage = 'US';
+                    updateButtonAndStatus(PROCESS_BUTTON_TEXT.processing_us, STATUS_TEXT.processing_us);
+                    const usBatches = Array.from(collectedAppIds).reduce((acc, id, i) => {
+                        if (i % BATCH_SIZE === 0) acc.push([]);
+                        acc[acc.length - 1].push(id);
+                        return acc;
+                    }, []);
+                    requestQueue.push(...usBatches.map(batch => ({ batch, stage: 'US', lang: 'english', cc: 'us' })));
+                    updateProgress();
+                    await processRequestQueue();
+                } else {
+                    applyAllFilters();
+                    isProcessingStarted = false;
+                    updateButtonAndStatus(PROCESS_BUTTON_TEXT.done, STATUS_TEXT.done, true, true);
+                    updateReviewFilterPlaceholders();
+                }
             } else if (currentProcessingStage === 'US' && processedUsGames >= totalGamesOnPage) {
-                // Завершили двухэтапный сбор (RU->US)
                 updateButtonAndStatus(PROCESS_BUTTON_TEXT.done, STATUS_TEXT.processing_rrc, true, false);
                 injectAllRrcDisplays();
                 applyAllFilters();
                 isProcessingStarted = false;
                 updateButtonAndStatus(PROCESS_BUTTON_TEXT.done, STATUS_TEXT.done, true, true);
-                updateReviewFilterPlaceholders();
-            } else if (currentProcessingStage === 'SINGLE_FETCH' && processedSingleStageGames >= totalGamesOnPage) {
-                // Завершили одноэтапный сбор
-                applyAllFilters();
-                isProcessingStarted = false;
-                updateButtonAndStatus(PROCESS_BUTTON_TEXT.done, STATUS_TEXT.done_no_rrc, true, true);
                 updateReviewFilterPlaceholders();
             }
             return;
@@ -1569,9 +1815,8 @@
             await fetchGameData(currentBatch, batchCC, batchLang, batchStage);
             await new Promise(r => setTimeout(r, REQUEST_DELAY));
         } catch (error) {
-            if (batchStage === 'RU') processedRuGames += currentBatch.length;
+            if (batchStage === 'LOCAL') processedLocalGames += currentBatch.length;
             else if (batchStage === 'US') processedUsGames += currentBatch.length;
-            else if (batchStage === 'SINGLE_FETCH') processedSingleStageGames += currentBatch.length;
             updateProgress();
         } finally {
             isProcessingQueue = false;
@@ -1582,9 +1827,12 @@
     function fetchGameData(appIds, countryCode, language, stage) {
         return new Promise((resolve) => {
             if (!appIds || appIds.length === 0) { resolve(); return; }
+
+            const apiCountryCode = STEAMDB_COUNTRY_MAP[countryCode]?.apiCC || countryCode.toUpperCase();
+
             const input = {
                 ids: appIds.map(appid => ({ appid: parseInt(appid, 10) })),
-                context: { language: language, country_code: countryCode, steam_realm: 1 },
+                context: { language: language, country_code: apiCountryCode, steam_realm: 1 },
                 data_request: {
                     include_assets: false, include_release: true, include_platforms: false,
                     include_all_purchase_options: true, include_screenshots: false, include_trailers: false,
@@ -1603,32 +1851,27 @@
                             if (data?.response?.store_items) {
                                 processGameData(data.response.store_items, stage);
                             } else {
-                                if (stage === 'RU') processedRuGames += appIds.length;
+                                if (stage === 'LOCAL') processedLocalGames += appIds.length;
                                 else if (stage === 'US') processedUsGames += appIds.length;
-                                else if (stage === 'SINGLE_FETCH') processedSingleStageGames += appIds.length;
                             }
                         } catch (e) {
-                            if (stage === 'RU') processedRuGames += appIds.length;
+                            if (stage === 'LOCAL') processedLocalGames += appIds.length;
                             else if (stage === 'US') processedUsGames += appIds.length;
-                            else if (stage === 'SINGLE_FETCH') processedSingleStageGames += appIds.length;
                         }
                     } else {
-                        if (stage === 'RU') processedRuGames += appIds.length;
+                        if (stage === 'LOCAL') processedLocalGames += appIds.length;
                         else if (stage === 'US') processedUsGames += appIds.length;
-                        else if (stage === 'SINGLE_FETCH') processedSingleStageGames += appIds.length;
                     }
                     updateProgress(); resolve();
                 },
                 onerror: function() {
-                    if (stage === 'RU') processedRuGames += appIds.length;
+                    if (stage === 'LOCAL') processedLocalGames += appIds.length;
                     else if (stage === 'US') processedUsGames += appIds.length;
-                    else if (stage === 'SINGLE_FETCH') processedSingleStageGames += appIds.length;
                     updateProgress(); resolve();
                 },
                 ontimeout: function() {
-                    if (stage === 'RU') processedRuGames += appIds.length;
+                    if (stage === 'LOCAL') processedLocalGames += appIds.length;
                     else if (stage === 'US') processedUsGames += appIds.length;
-                    else if (stage === 'SINGLE_FETCH') processedSingleStageGames += appIds.length;
                     updateProgress(); resolve();
                 }
             });
@@ -1636,47 +1879,40 @@
     }
 
     async function startDataCollection() {
-        if (isProcessingStarted) return;
-        isProcessingStarted = true;
-        processedRuGames = 0; processedUsGames = 0; processedSingleStageGames = 0;
-        requestQueue = []; gameData = {};
-        const rows = document.querySelectorAll('tr.app[data-appid]');
-        collectedAppIds = new Set(Array.from(rows).map(r => r.dataset.appid));
-        totalGamesOnPage = collectedAppIds.size;
+        if (isProcessingStarted) return;
+        isProcessingStarted = true;
+        processedLocalGames = 0; processedUsGames = 0;
+        requestQueue = []; gameData = {};
+        const rows = document.querySelectorAll('tr.app[data-appid]');
+        collectedAppIds = new Set(Array.from(rows).map(r => r.dataset.appid));
+        totalGamesOnPage = collectedAppIds.size;
 
-        if (totalGamesOnPage === 0) {
-            isProcessingStarted = false;
-            updateButtonAndStatus(PROCESS_BUTTON_TEXT.idle, isRuModeActive ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled, false, true);
-            return;
-        }
+        if (totalGamesOnPage === 0) {
+            isProcessingStarted = false;
+            updateButtonAndStatus(PROCESS_BUTTON_TEXT.idle, currentLocalCC !== 'us' ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled, false, true);
+            return;
+        }
 
-        const batches = Array.from(collectedAppIds).reduce((acc, id, i) => {
-            if (i % BATCH_SIZE === 0) acc.push([]);
-            acc[acc.length - 1].push(id);
-            return acc;
-        }, []);
+        currentLocalCC = getCurrentCurrency();
 
-        const isOnPricesNotAvailablePage = window.location.href.includes('pricesnotavailable');
+        if (currentLocalCC !== 'us') {
+            updateButtonAndStatus("Загрузка...", STATUS_TEXT.fetching_matrix, false, false);
+            await fetchSteamPricingMatrix();
+        }
 
-        if (isOnPricesNotAvailablePage) {
-            currentProcessingStage = 'SINGLE_FETCH';
-            // Используем более общий текст статуса для ясности
-            updateButtonAndStatus(PROCESS_BUTTON_TEXT.processing_single, STATUS_TEXT.processing_single);
-            requestQueue = batches.map(batch => ({ batch, stage: 'SINGLE_FETCH', lang: 'english', cc: 'US' }));
-        } else if (isRuModeActive) {
-            currentProcessingStage = 'RU';
-            updateButtonAndStatus(PROCESS_BUTTON_TEXT.processing_ru, STATUS_TEXT.processing_ru);
-            requestQueue = batches.map(batch => ({ batch, stage: 'RU', lang: 'russian', cc: 'RU' }));
-        } else {
-            currentProcessingStage = 'SINGLE_FETCH';
-            updateButtonAndStatus(PROCESS_BUTTON_TEXT.processing_single, STATUS_TEXT.processing_single);
-            const currentCC = document.querySelector('details#js-select-cc input[name="cc"]:checked')?.value || document.querySelector('details#js-select-cc')?.dataset.default || 'us';
-            requestQueue = batches.map(batch => ({ batch, stage: 'SINGLE_FETCH', lang: 'english', cc: currentCC }));
-        }
+        const batches = Array.from(collectedAppIds).reduce((acc, id, i) => {
+            if (i % BATCH_SIZE === 0) acc.push([]);
+            acc[acc.length - 1].push(id);
+            return acc;
+        }, []);
 
-        updateProgress();
-        await processRequestQueue();
-    }
+        currentProcessingStage = 'LOCAL';
+        updateButtonAndStatus(PROCESS_BUTTON_TEXT.processing_local, STATUS_TEXT.processing_local);
+        requestQueue = batches.map(batch => ({ batch, stage: 'LOCAL', lang: 'russian', cc: currentLocalCC }));
+
+        updateProgress();
+        await processRequestQueue();
+    }
 
     function updateButtonAndStatus(btnText, statusMsg, isDone = false, enableButton = false) {
         const processBtnTextEl = document.getElementById('process-btn-text');
@@ -1690,42 +1926,6 @@
         }
         if (processButton) processButton.disabled = !enableButton && isProcessingStarted;
     }
-
-    function updateProgress() {
-        const progressBar = document.querySelector('.steamdb-enhancer .progress-bar');
-        const progressCountEl = document.querySelector('.steamdb-enhancer .progress-count');
-        const progressPercentEl = document.querySelector('.steamdb-enhancer .progress-percent');
-        if (!progressBar || !progressCountEl || !progressPercentEl) return;
-        let overallPercent = 0; let countText = "0/0";
-
-        if (totalGamesOnPage > 0) {
-            // Новая, более простая и надежная логика
-            switch (currentProcessingStage) {
-                case 'RU':
-                    overallPercent = (processedRuGames / totalGamesOnPage) * 50;
-                    countText = `Этап RU: ${processedRuGames}/${totalGamesOnPage}`;
-                    break;
-                case 'US':
-                    overallPercent = 50 + (processedUsGames / totalGamesOnPage) * 50;
-                    countText = `Этап US: ${processedUsGames}/${totalGamesOnPage}`;
-                    break;
-                case 'SINGLE_FETCH':
-                    overallPercent = (processedSingleStageGames / totalGamesOnPage) * 100;
-                    countText = `Обработано: ${processedSingleStageGames}/${totalGamesOnPage}`;
-                    break;
-            }
-        }
-        overallPercent = Math.min(overallPercent, 100);
-        progressBar.style.width = `${overallPercent}%`;
-        progressCountEl.textContent = countText;
-        progressPercentEl.textContent = `(${Math.round(overallPercent)}%)`;
-
-        if (!isProcessingStarted && processButton) {
-            const processBtnTextEl = document.getElementById('process-btn-text');
-            if (processBtnTextEl) processBtnTextEl.textContent = PROCESS_BUTTON_TEXT.idle;
-            processButton.disabled = false;
-        }
-    }
 
     function handleHover(event) {
         const row = event.target.closest('tr.app');
@@ -1835,27 +2035,6 @@
         }
         updateUiForCurrencyMode();
         document.querySelectorAll('tr.app[data-appid]').forEach(row => processAndStyleAtlDiscount(row));
-    }
-
-    function updateUiForCurrencyMode() {
-        const rrcFilterGroup = document.querySelector('#rrc-filter-control-group');
-        const statusIndicator = document.querySelector('.steamdb-enhancer .status-indicator');
-        if (rrcFilterGroup) {
-            rrcFilterGroup.style.display = isRuModeActive ? '' : 'none';
-            if (!isRuModeActive) {
-                activeRrcFilters = { lower: false, equal: false, higher: false };
-                rrcFilterGroup.querySelectorAll('.btn.active').forEach(b => b.classList.remove('active'));
-            }
-        }
-        if (statusIndicator && !isProcessingStarted) {
-            statusIndicator.textContent = isRuModeActive ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled;
-        }
-        if (document.querySelector('tr.app[data-appid]')) {
-            applyAllFilters();
-            if (!isRuModeActive) {
-                document.querySelectorAll('.rrc-display-container').forEach(el => el.remove());
-            }
-        }
     }
 
     function processAndStyleAtlDiscount(row) {
@@ -2018,126 +2197,6 @@
             originalBlock.appendChild(rowDiv);
         });
         updateDiscountFilterUI();
-    }
-
-    async function init() {
-        isRuModeActive = isRuCurrencySelected();
-        await fetchAndStoreTags();
-
-        const style = document.createElement('style');
-        style.textContent = styles;
-        document.head.append(style);
-
-        createTagFilterModal();
-
-        const header = document.querySelector('.header-title');
-        if (header) {
-            const filtersContainer = createFiltersContainer();
-            header.parentNode.insertBefore(filtersContainer, header.nextElementSibling);
-            processButton = document.getElementById('process-btn');
-            if(processButton) {
-                processButton.addEventListener('click', () => {
-                    const statusIndicator = document.querySelector('.steamdb-enhancer .status-indicator');
-                    ensureAllEntriesAndCountdown(startDataCollection, statusIndicator, processButton);
-                });
-            }
-            filtersContainer.addEventListener('click', handleMainPanelClick);
-
-            document.getElementById('review-min-count').addEventListener('input', handleReviewFilterChange);
-            document.getElementById('review-max-count').addEventListener('input', handleReviewFilterChange);
-            document.getElementById('review-min-rating').addEventListener('input', handleReviewFilterChange);
-            document.getElementById('review-max-rating').addEventListener('input', handleReviewFilterChange);
-
-            document.getElementById('total-sort-checkbox').addEventListener('change', (event) => {
-                isTotalSortEnabled = event.target.checked;
-                applyTotalSort();
-            });
-
-        } else {
-            return;
-        }
-
-        const steamDbFilterForm = document.getElementById('js-filters');
-        let originalDiscountBlock = null;
-        if (steamDbFilterForm) {
-            const allFilterBlocks = steamDbFilterForm.querySelectorAll('div.filter-block');
-            for (let block of allFilterBlocks) {
-                if (block.querySelector('input[id^="js-discounts-"]')) {
-                    originalDiscountBlock = block;
-                    break;
-                }
-            }
-        }
-
-        if (originalDiscountBlock) {
-            setupCustomDiscountFilters(originalDiscountBlock);
-            originalDiscountBlock.addEventListener('change', handleDiscountFilterChange);
-        }
-
-        document.querySelectorAll('tr.app[data-appid]').forEach(row => processAndStyleAtlDiscount(row));
-        const observerOptions = { childList: true, subtree: true };
-        const tableBody = document.querySelector('#DataTables_Table_0 tbody');
-        if (tableBody) {
-            const tableObserver = new MutationObserver((mutationsList) => {
-                for (const mutation of mutationsList) {
-                    if (mutation.type === 'childList') {
-                        mutation.addedNodes.forEach(node => {
-                            if (node.nodeType === Node.ELEMENT_NODE && node.matches('tr.app[data-appid]')) {
-                                processAndStyleAtlDiscount(node);
-                            }
-                        });
-                    }
-                }
-                if (typeof $ !== 'undefined' && $.fn.dataTable && $.fn.dataTable.isDataTable('#DataTables_Table_0')) {
-                    $('#DataTables_Table_0').DataTable().rows().nodes().to$().each(function() {
-                        processAndStyleAtlDiscount(this);
-                    });
-                }
-            });
-            tableObserver.observe(tableBody, observerOptions);
-            if (typeof $ !== 'undefined' && $.fn.dataTable) {
-                $(document).on('draw.dt', function (e, settings) {
-                    if (settings.nTable.id === 'DataTables_Table_0') {
-                        $('#DataTables_Table_0').DataTable().rows().nodes().to$().each(function() {
-                            processAndStyleAtlDiscount(this);
-                        });
-                    }
-                });
-            }
-        }
-
-        document.querySelector('#DataTables_Table_0 tbody')?.addEventListener('mouseover', handleHover);
-
-        const currencyDropdown = document.querySelector('details#js-select-cc');
-        if (currencyDropdown) {
-            const observer = new MutationObserver((mutationsList) => {
-                for (let mutation of mutationsList) {
-                    if (mutation.type === 'attributes' && mutation.attributeName === 'data-default' ||
-                        mutation.target.nodeName === 'INPUT' && mutation.target.type === 'radio' && mutation.target.name === 'cc') {
-                        const newRuMode = isRuCurrencySelected();
-                        if (newRuMode !== isRuModeActive) {
-                            isRuModeActive = newRuMode;
-                            reinitializePanel();
-                        }
-                        break;
-                    }
-                }
-            });
-            observer.observe(currencyDropdown, { attributes: true, childList: true, subtree: true });
-        }
-
-        const typeDropdown = document.getElementById('js-select-type');
-        if (typeDropdown) {
-            const typeObserver = new MutationObserver(() => {
-                reinitializePanel();
-            });
-            typeDropdown.querySelectorAll('input[name="displayOnly"]').forEach(radio => {
-                typeObserver.observe(radio, { attributes: true, attributeFilter: ['checked'] });
-            });
-            typeObserver.observe(typeDropdown, { childList: true, subtree: true });
-        }
-
-        updateButtonAndStatus(PROCESS_BUTTON_TEXT.idle, isRuModeActive ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled, false, true);
     }
 
     if (document.readyState === 'loading') {
