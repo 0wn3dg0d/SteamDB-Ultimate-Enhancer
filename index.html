@@ -4,15 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SteamDB Enhancer - Описание и установка</title>
+    <link href="./output.css" rel="stylesheet">
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
+        /* Основные стили */
         body {
             background-color: #0A0A0A;
             font-family: 'Exo 2', sans-serif;
             color: #C7C7C7;
         }
+
+        /* Стили для кастомных деталей/сводки */
         details > summary {
             list-style: none;
             cursor: pointer;
@@ -68,7 +73,7 @@
             content: '■';
             position: absolute;
             left: 0.5rem;
-            top: 0.25em;
+            top: 0.25em; 
             color: #BFA65A;
             font-size: 0.8em;
         }
@@ -89,10 +94,16 @@
             width: 1rem;
             margin-right: 0.5rem;
         }
-        .details-content ul ul, .details-content ol ol, .details-content ul ol, .details-content ol ul {
+        /* Вложенные списки */
+        .details-content ul ul, 
+        .details-content ol ol, 
+        .details-content ul ol, 
+        .details-content ol ul {
             margin-top: 0.75rem;
             padding-left: 1.25rem;
         }
+
+        /* Стили для изображений */
         .feature-img {
             border: 1px solid #3A3A3A;
             border-radius: 0.5rem;
@@ -105,6 +116,8 @@
             transform: scale(1.02);
             box-shadow: 0 0 25px rgba(191, 166, 90, 0.3);
         }
+        
+        /* Стили для полосы прокрутки */
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -119,11 +132,14 @@
         ::-webkit-scrollbar-thumb:hover {
             background-color: #D7C589;
         }
+
+        /* Стили для разделителя секций */
         .section-divider {
             text-align: center;
             margin-top: 4rem;
             margin-bottom: 3rem;
         }
+
         .divider-title {
             display: inline-block;
             position: relative;
@@ -132,12 +148,14 @@
             color: #BFA65A;
             padding: 0 1.5rem;
         }
+        
         .divider-line {
             border: 0;
             height: 2px;
             background-image: linear-gradient(to right, rgba(58, 58, 58, 0), rgba(58, 58, 58, 0.75), rgba(58, 58, 58, 0));
             margin: 1.5rem 0;
         }
+        
         .container {
             max-width: 72rem;
             margin-left: auto;
@@ -226,18 +244,18 @@
                                 <li>Позволяет создавать сложные комбинации фильтров по нескольким меткам одновременно.</li>
                             </ul>
                         </li>
-                        <li><strong>Анализ РРЦ (Рекомендованной Региональной Цены) для РФ:</strong>
+                        <li><strong>Анализ соответствия цен (Valve, ППС, Курс):</strong>
                             <ul>
-                                <li>При выборе российской валюты (RUB) на SteamDB, скрипт позволяет анализировать цены игр относительно рекомендованных Steam цен для российского региона.</li>
-                                <li>Слева от названия игры отображается индикатор:
+                                <li>При выборе любой базовой валюты (кроме USD) на SteamDB, скрипт позволяет анализировать цены игр относительно официальных метрик ценообразования Valve для выбранного региона.</li>
+                                <li>Слева от названия игры отображаются три колонки с индикаторами (Курс, ППС, Valve):
                                     <ul>
-                                        <li><code>&lt; РРЦ</code> (синий): Текущая полная цена игры в рублях ниже рекомендованной Steam. Отображается процент и сумма разницы.</li>
-                                        <li><code>= РРЦ</code> (зеленый): Текущая полная цена игры в рублях соответствует рекомендованной Steam.</li>
-                                        <li><code>&gt; РРЦ</code> (красный): Текущая полная цена игры в рублях выше рекомендованной Steam. Отображается процент и сумма разницы.</li>
-                                        <li><code>Нет данных РРЦ</code>: Если не удалось получить данные о цене в USD для расчета.</li>
+                                        <li><code>&lt;</code> (синий): Текущая локальная цена ниже рекомендованной. Отображается процент разницы.</li>
+                                        <li><code>=</code> (зеленый): Текущая локальная цена соответствует рекомендованной.</li>
+                                        <li><code>&gt;</code> (красный): Текущая локальная цена выше рекомендованной. Отображается процент разницы.</li>
+                                        <li><code>N/A</code>: Если данные для расчета недоступны в матрице Steam.</li>
                                     </ul>
                                 </li>
-                                <li>Добавлены кнопки для фильтрации игр по этому критерию: "&lt; РРЦ", "= РРЦ", "&gt; РРЦ".</li>
+                                <li>Добавлена расширенная панель из <strong>9 кнопок фильтров</strong>, позволяющая гибко комбинировать условия и находить игры по любой из трех метрик (например, "Дешевле Valve", но "Дороже Курса").</li>
                             </ul>
                         </li>
                         <li><strong>Фильтры по типу скидок и проценту от исторического минимума (ATL):</strong>
@@ -246,7 +264,7 @@
                                 <li><strong>Фильтры по процентам в историческом минимуме (ATL):</strong> Сравнивают текущий процент скидки с процентом скидки, который был при достижении игрой All-Time Low цены.
                                     <ul>
                                         <li><code>% &lt; Минимума</code>: Текущий % скидки &gt; Исторического % ATL (выгоднее).</li>
-                                        <li><code>% = Минимуму</code>: Текущий % скидки = Историческому % ATL.</li>
+                                        <li><code>% = Минимуму</code>: Текущий % скидки = Исторического % ATL.</li>
                                         <li><code>% &gt; Минимума</code>: Текущий % скидки &lt; Исторического % ATL (менее выгодно по % скидки).</li>
                                     </ul>
                                 </li>
@@ -281,7 +299,7 @@
                 <div class="details-content">
                     <ul>
                         <li>При наведении на игру отображается всплывающая подсказка с серией, отзывами, статусом раннего доступа, языками и описанием.</li>
-                        <li><strong>Индикатор РРЦ (РФ):</strong> Слева от названия каждой игры (при активной российской валюте) отображается информация о соответствии цены рекомендованной Steam.</li>
+                        <li><strong>Индикатор РРЦ:</strong> Слева от названия каждой игры отображается информация о соответствии цены трём официальным рекомендациям Steam.</li>
                         <li><strong>Визуализация процента скидки ATL:</strong> Текст "at -X%" подсвечивается цветом, показывая, насколько текущий процент скидки выгоден по сравнению с историческим.</li>
                     </ul>
                 </div>
@@ -340,8 +358,8 @@
                 <img src="https://i.imgur.com/5OQm5SW.png" alt="Пример работы скрипта 1" class="feature-img inline-block">
             </div>
             <div>
-                <p><em>Игры, доступные в русском регионе, цена на которые ниже РРЦ, с русской озвучкой, вне раннего доступа, с рейтингом выше 90%</em></p>
-                <img src="https://i.imgur.com/zTuDI1q.png" alt="Пример работы скрипта 2" class="feature-img inline-block">
+                <p><em>Игры, доступные в русском регионе, цена на которые ниже ППС, с русскими субтитрами, вне раннего доступа</em></p>
+                <img src="https://i.imgur.com/HS3BYlf.png" alt="Пример работы скрипта 2" class="feature-img inline-block">
             </div>
             <div>
                 <p><em>Интерфейс калькулятора желаемого</em></p>
@@ -375,5 +393,3 @@
 
 </body>
 </html>
-
-
