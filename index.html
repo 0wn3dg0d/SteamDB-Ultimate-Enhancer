@@ -196,13 +196,17 @@
 
         <header class="text-center mb-8 py-8">
             <h1 style="font-size: 2.5rem; font-weight: bold; color: #D7C589; letter-spacing: 0.1em; text-transform: uppercase;">SteamDB - Sales; Ultimate Enhancer</h1>
-            <p style="font-size: 1.25rem; color: #C7C7C7;" class="mt-4 max-w-4xl mx-auto">Комплексное улучшение для SteamDB: фильтры по языкам, спискам, дате, РРЦ, конвертация валют, расширенная информация об играх, калькулятор желаемого, фильтры по % от ист. минимума.</p>
+            <p style="font-size: 1.25rem; color: #C7C7C7;" class="mt-4 max-w-4xl mx-auto">Комплексное улучшение для SteamDB: фильтры по языкам, спискам, регионам, дате, РРЦ, конвертация валют, расширенная информация об играх и калькулятор желаемого.</p>
         </header>
 
         <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 2rem;">
             <a href="https://greasyfork.org/ru/scripts/526182-steamdb-sales-ultimate-enhancer" target="_blank" rel="noopener noreferrer" style="display: inline-block; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); transition: box-shadow 0.3s ease, transform 0.3s ease;" onmouseover="this.style.boxShadow='0 8px 25px rgba(191, 166, 90, 0.4)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.boxShadow='0 4px 15px rgba(0, 0, 0, 0.2)'; this.style.transform='translateY(0)';">
                 <img src="https://i.imgur.com/NzU7H2j.png" alt="Установить с Greasy Fork" style="max-width: 550px; display: block;">
             </a>
+        </div>
+
+        <div class="text-center mb-8">
+            <img src="https://i.imgur.com/LZAgumQ.png" alt="Интерфейс скрипта" class="feature-img inline-block" style="max-width: 1000px; width: 100%;">
         </div>
 
         <div class="section-divider">
@@ -212,6 +216,18 @@
         </div>
 
         <main class="space-y-4">
+            <details open>
+                <summary>Доступность в регионе (Модуль PICS)</summary>
+                <div class="details-content">
+                    <ul>
+                        <li>Скрипт интегрирован с локальным микро-сервером <strong>USEsteampics</strong> для чтения скрытой базы данных Steam Network.</li>
+                        <li><strong>Выявление скрытых блокировок:</strong> Прямо в таблице отображаются строгие блокировки пакетов от издателей. Если игру нельзя купить или подарить в выбранном регионе, слева от её иконки появится красная плашка (например, <strong style="color: #ff6961;">NO RU</strong>).</li>
+                        <li><strong>Новые фильтры:</strong> На панели управления доступен выпадающий список со всеми популярными регионами (RU, BY, KZ, TR, AR, UA, US). В один клик можно отфильтровать таблицу, оставив только доступные или только заблокированные игры.</li>
+                        <li><strong style="color: #D7C589;">Важно:</strong> Для работы модуля необходимо запустить фоновое приложение <a href="https://github.com/0wn3dg0d/USEsteampics/releases" target="_blank" style="color: #66c0f4; text-decoration: none;">USEsteampics</a>. Если приложение не запущено, фильтры регионов будут скрыты, а скрипт продолжит работу в обычном (штатном) режиме.</li>
+                    </ul>
+                </div>
+            </details>
+
             <details>
                 <summary>Расширенные фильтры</summary>
                 <div class="details-content space-y-8">
@@ -328,9 +344,10 @@
                 <summary>Настройка и запуск обработки</summary>
                 <div class="details-content">
                     <ol>
+                        <li>Запустите приложение <code>USEsteampics.exe</code>, если хотите проверять строгие региональные ограничения.</li>
                         <li>Зайдите на страницу <strong>Sales</strong> на SteamDB.</li>
                         <li>Проставьте нужную валюту и основные фильтры SteamDB.</li>
-                        <li>Нажмите кнопку <strong>"Обработать игры"</strong> (или <strong>"Высчитать"</strong> для калькулятора желаемого).</li>
+                        <li>Нажмите кнопку <strong>"Обработать игры"</strong> (или <strong>"Высчитать"</strong> для калькулятора желаемого) на нашей панели.</li>
                     </ol>
                 </div>
             </details>
@@ -338,34 +355,13 @@
                 <summary>Работа с фильтрами и информацией</summary>
                 <div class="details-content">
                     <ul>
-                        <li>После обработки используйте новые фильтры на панели скрипта для сортировки по языкам, дате, РРЦ, спискам и т.д.</li>
+                        <li>После обработки используйте новые фильтры на панели скрипта для сортировки по регионам, языкам, дате, РРЦ, спискам и т.д.</li>
                         <li>Наведите курсор на игру, чтобы увидеть расширенную информацию.</li>
                         <li>Для конвертации валюты введите курс и нажмите "Конвертировать".</li>
                     </ul>
                 </div>
             </details>
         </main>
-
-        <div class="section-divider">
-            <hr class="divider-line">
-            <h2 class="divider-title">Скриншоты</h2>
-            <hr class="divider-line">
-        </div>
-
-        <div class="text-center space-y-8">
-            <div>
-                <p><em>Игры, доступные в Казахстане и недоступные в России, с русским текстовым переводом, скидки на которые появились не раньше 19.06.2025</em></p>
-                <img src="https://i.imgur.com/5OQm5SW.png" alt="Пример работы скрипта 1" class="feature-img inline-block">
-            </div>
-            <div>
-                <p><em>Игры, доступные в русском регионе, цена на которые ниже ППС, с русскими субтитрами, вне раннего доступа</em></p>
-                <img src="https://i.imgur.com/HS3BYlf.png" alt="Пример работы скрипта 2" class="feature-img inline-block">
-            </div>
-            <div>
-                <p><em>Интерфейс калькулятора желаемого</em></p>
-                <img src="https://i.imgur.com/s53CiaE.png" alt="Пример работы скрипта 3" class="feature-img inline-block">
-            </div>
-        </div>
 
         <div class="warning-box">
             <h3>❗️ Важная информация для пользователей Chrome (версия 138+)</h3>
@@ -384,7 +380,6 @@
                 </details>
             </div>
         </div>
-
 
         <footer class="text-center mt-16 py-6" style="border-top: 1px solid #3A3A3A;">
             <p style="color: #8A8A8A;">Автор: 0wn3df1x<br>и команда <a href="https://www.zoneofgames.ru" style="color:#BFA65A; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">ZoneOfGames.ru</a></p>
