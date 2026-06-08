@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SteamDB - Sales; Ultimate Enhancer
 // @namespace    https://steamdb.info/
-// @version      1.4.2
+// @version      1.4.3
 // @description  Комплексное улучшение для SteamDB: фильтры по языкам, спискам, дате, РРЦ, конвертация валют, расширенная информация об играх, калькулятор желаемого, фильтры по % от ист. минимума.
 // @author       0wn3df1x
 // @license      MIT
@@ -17,6 +17,7 @@
 // @connect      api.steampowered.com
 // @connect      gist.githubusercontent.com
 // @connect      partner.steamgames.com
+// @connect      localhost
 // ==/UserScript==
 
 (function() {
@@ -118,6 +119,9 @@
         maxRating: null
     };
     let earlyAccessFilter = 'none';
+    let regionAccessFilter = 'none';
+    let selectedRegionCheck = 'RU';
+    let isPicsServerAvailable = false;
     let isTotalSortEnabled = false;
     let debounceTimer;
     let activeTagFilters = {};
@@ -146,63 +150,29 @@
 
     const styles = `
     .steamdb-enhancer * { box-sizing: border-box; margin: 0; padding: 0; }
-    .steamdb-enhancer { background: #16202d; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25); padding: 12px; width: auto; margin-top: 5px; margin-bottom: 15px; max-width: 900px; }
-    .enhancer-header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; flex-wrap: wrap; }
-    .row-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin-bottom: 12px; }
-    .row-layout.compact { gap: 8px; margin-bottom: 0; }
-    .control-group { background: #1a2635; border-radius: 6px; padding: 10px; margin: 6px 0; }
-    .group-title { color: #66c0f4; font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
-    .btn-group { display: flex; flex-wrap: wrap; gap: 5px; }
-    .btn { background: #2a3a4d; border: 1px solid #354658; border-radius: 4px; color: #c6d4df; cursor: pointer; font-size: 12px; padding: 5px 10px; transition: all 0.2s ease; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-    .btn:hover { background: #31455b; border-color: #3d526b; }
-    .btn.active { background: #66c0f4 !important; border-color: #66c0f4 !important; color: #1b2838 !important; }
-    .btn-icon { width: 12px; height: 12px; fill: currentColor; }
-    .progress-container { background: #1a2635; border-radius: 4px; height: 6px; overflow: hidden; margin: 10px 0 5px; }
-    .progress-text { display: flex; justify-content: space-between; color: #8f98a0; font-size: 11px; margin: 4px 2px 0; }
-    .progress-count { flex: 1; text-align: left; }
-    .progress-percent { flex: 1; text-align: right; }
-    .progress-bar { height: 100%; background: linear-gradient(90deg, #66c0f4 0%, #4d9cff 100%); transition: width 0.3s ease; }
-    .converter-group { display: flex; gap: 6px; flex: 1; }
-    .input-field { background: #1a2635; border: 1px solid #2a3a4d; border-radius: 4px; color: #c6d4df; font-size: 12px; padding: 5px 8px; min-width: 60px; width: 80px; }
-    .date-picker { background: #1a2635; border: 1px solid #2a3a4d; border-radius: 4px; color: #c6d4df; font-size: 12px; padding: 5px; width: 120px; }
-    .status-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 8px; border-radius: 4px; color: #8f98a0;}
+    .steamdb-enhancer { background: #16202d; border: 1px solid #2a3f5a; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); padding: 10px; margin: 0 0 15px 0; width: 100%; display: flex; flex-direction: column; gap: 8px; font-family: Inter, fallback-inter, sans-serif; color: #a0b0c0; font-size: 12px; }
+    .enh-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border-bottom: 1px solid #233246; padding-bottom: 8px; }
+    .enh-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .enh-group { display: flex; align-items: center; gap: 4px; background: #111923; padding: 4px 8px; border-radius: 4px; border: 1px solid #1e2c3e; flex-wrap: wrap; }
+    .enh-group-transparent { background: transparent; border: none; padding: 0; }
+    .enh-label { color: #66c0f4; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; margin-right: 4px; white-space: nowrap; }
+    .btn { background: #2a3f5a; border: 1px solid #3c5372; border-radius: 3px; color: #c6d4df; cursor: pointer; font-size: 11px; padding: 4px 10px; transition: 0.15s; line-height: 1.4; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+    .btn:hover { background: #314968; color: #fff; border-color: #4a668a; }
+    .btn.active { background: #66c0f4 !important; border-color: #66c0f4 !important; color: #1b2838 !important; font-weight: 600; }
+    .btn-icon { width: 14px; height: 14px; fill: currentColor; }
+    .process-btn { background: #4c6b22; border-color: #577c27; color: #fff; font-weight: bold; padding: 6px 15px; font-size: 12px; }
+    .process-btn:hover { background: #577c27; border-color: #799e49; }
+    .process-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .input-field { background: #1b2838; border: 1px solid #3c5372; border-radius: 3px; color: #c6d4df; font-size: 11px; padding: 4px 6px; outline: none; }
+    .input-field:focus { border-color: #66c0f4; }
+    .enh-select { cursor: pointer; padding-right: 2px; }
+    .enh-progress-wrapper { flex-grow: 1; display: flex; flex-direction: column; gap: 3px; min-width: 200px; max-width: 400px; margin-left: auto; }
+    .progress-text { display: flex; justify-content: space-between; font-size: 10px; color: #8f98a0; line-height: 1; }
+    .progress-container { height: 6px; background: #111923; border-radius: 3px; overflow: hidden; border: 1px solid #1e2c3e; }
+    .progress-bar { height: 100%; background: linear-gradient(90deg, #66c0f4 0%, #4d9cff 100%); transition: width 0.3s ease; width: 0%; }
+    .status-indicator { font-size: 11px; color: #8f98a0; white-space: nowrap; }
     .status-indicator.status-active { color: #66c0f4; }
-    .steamdb-tooltip { position: absolute; background: #1b2838; color: #c6d4df; padding: 15px; border-radius: 3px; width: 320px; font-size: 14px; line-height: 1.5; box-shadow: 0 0 12px rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 9999; display: none; }
-    .tooltip-arrow { position: absolute; width: 0; height: 0; border-top: 10px solid transparent; border-bottom: 10px solid transparent; }
-    .group-top { margin-bottom: 8px; }
-    .group-middle { margin-bottom: 12px; }
-    .group-bottom { margin-bottom: 15px; }
-    .tooltip-row { margin-bottom: 4px; }
-    .tooltip-row.compact { margin-bottom: 2px; }
-    .tooltip-row.spaced { margin-bottom: 10px; }
-    .tooltip-row.language { margin-bottom: 8px; }
-    .tooltip-row.description { margin-top: 15px; padding-top: 10px; border-top: 1px solid #2a3a4d; color: #8f98a0; font-style: italic; }
-    .positive { color: #66c0f4; }
-    .mixed { color: #997a00; }
-    .negative { color: #a74343; }
-    .no-reviews { color: #929396; }
-    .language-yes { color: #66c0f4; }
-    .language-no { color: #a74343; }
-    .early-access-yes { color: #66c0f4; }
-    .early-access-no { color: #929396; }
-    .no-data { color: #929396; }
-    tr.app td:first-child { position: relative; }
-    .filter-submit-wrap { position: static !important; }
-
-    .rrc-display-container {
-        position: absolute;
-        width: 175px;
-        left: -175px;
-        top: -1px;
-        height: 100%;
-        box-sizing: border-box;
-        background-color: var(--body-bg-color, #161920);
-        border-top: 1px solid var(--border-color-2, hsl(216, 25%, 16%));
-        border-left: none; border-right: none; border-radius: 0;
-        display: flex; flex-direction: row; justify-content: space-around; align-items: center;
-        padding: 0 2px; font-size: 10px; color: var(--body-color, #ddd);
-        text-align: center; overflow: hidden; z-index: 3; pointer-events: none;
-    }
+    .rrc-display-container { position: absolute; width: 175px; left: -175px; top: -1px; height: 100%; box-sizing: border-box; background-color: var(--body-bg-color, #161920); border-top: 1px solid var(--border-color-2, hsl(216, 25%, 16%)); border-left: none; border-right: none; border-radius: 0; display: flex; flex-direction: row; justify-content: space-around; align-items: center; padding: 0 2px; font-size: 10px; color: var(--body-color, #ddd); text-align: center; overflow: hidden; z-index: 3; pointer-events: none; }
     .rrc-col { display: flex; flex-direction: column; align-items: center; width: 33%; padding: 0 2px; }
     .rrc-header { font-size: 9px; color: #8f98a0; margin-bottom: 2px; line-height: 1; }
     .rrc-text { font-weight: 700; font-style: normal; padding: 2px 4px; border-radius: 3px; display: inline-block; line-height: 1.1; margin-bottom: 2px; width: 100%; }
@@ -211,50 +181,41 @@
     .rrc-text.lower { background-color: #1566b7 !important; color: #d1e5fa !important; }
     .rrc-details { color: var(--muted-color, #999); font-size: 9px; line-height: 1; display: block; white-space: nowrap; }
     .rrc-no-data { color: var(--muted-color, #999); font-style: italic; font-size: 10px; padding: 2px 0; width: 100%; }
-
     #rrc-filter-group.disabled-filter { opacity: 0.5; pointer-events: none; }
-    #rrc-filter-group.disabled-filter .btn { cursor: not-allowed; }
-
+    .restriction-badge { background-color: #a74343; color: #fff; padding: 2px 4px; border-radius: 3px; font-size: 9px; font-weight: bold; position: absolute; left: -35px; top: 50%; transform: translateY(-50%); z-index: 5; white-space: nowrap; display: flex; align-items: center; justify-content: center; cursor: help;}
+    .restriction-badge.has-rrc { left: -215px; }
     .steamdb-custom-discount-filters { display: flex; flex-direction: column; gap: 0px; margin-top: 0px; }
     .steamdb-custom-discount-filters .filter-block-title { color: #c6d4df; font-size: 14px; font-weight: 500; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid #2a3f5a;}
     .steamdb-custom-discount-filters .filter-block-subtitle { color: #a0b0c0; font-size: 13px; font-weight: 400; margin-top: 10px; margin-bottom: 6px; }
-
     .discount-filter-row-steamdb { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 1px 0; font-size: 13px; min-height: 24px; }
     .discount-filter-row-steamdb .steamy-checkbox-control { display: inline-flex; align-items: center; gap: 5px; color: #9fbbcb; cursor: pointer; font-weight: normal; padding: 0; white-space: nowrap; }
     .discount-filter-row-steamdb .steamy-checkbox-control:hover, .discount-filter-row-steamdb .steamy-checkbox-control:focus-within { color: #fff; }
     .discount-filter-row-steamdb .steamy-checkbox-control input[type="checkbox"] { margin: 0 4px 0 0; vertical-align: middle; }
-    .discount-filter-row-steamdb .steamy-checkbox-control:first-of-type { justify-self: start; padding-left: 0; }
     .discount-filter-label-text-steamdb { text-align: left; padding-left: 5px; color: #c6d4df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: normal; vertical-align: middle; }
-    .discount-filter-row-steamdb .steamy-checkbox-control:last-of-type { justify-self: end; }
     .tooltipped-blue input[type="checkbox"]:checked { accent-color: #1566b7; }
     .tooltipped-green input[type="checkbox"]:checked { accent-color: #4c6b22; }
     .tooltipped-purple input[type="checkbox"]:checked { accent-color: #74002d; }
-
-    #wishlist-calculator-group .group-title { font-size: 11px; color: #a0a0a0; text-transform: none; margin-bottom: 6px; }
-    #wishlist-calculator-group .btn { width: 100%; justify-content: center; }
-
     .atl-percent-text { padding: 1px 3px; border-radius: 2px; font-weight: bold; }
     .atl-percent-text.cheaper { background-color: #1566b7 !important; color: #d1e5fa !important; }
     .atl-percent-text.equal { background-color: #4c6b22 !important; color: #c0ef15 !important; }
     .atl-percent-text.more_expensive { background-color: #74002d !important; color: #dfccff !important; }
-
     .tag-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10001; display: none; justify-content: center; align-items: center; }
     .tag-modal { background: #1b2838; color: #c6d4df; padding: 20px; border-radius: 6px; width: 500px; max-width: 90%; box-shadow: 0 5px 20px rgba(0,0,0,0.4); }
     .tag-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #2a3a4d; padding-bottom: 10px; }
     .tag-modal-header h2 { color: #66c0f4; margin: 0; font-size: 18px; }
     .tag-modal-close { background: none; border: none; color: #c6d4df; font-size: 24px; cursor: pointer; line-height: 1; padding: 0 5px; }
-    .tag-modal-close:hover { color: #66c0f4; }
     .tag-search-input { width: 100%; background: #1a2635; border: 1px solid #2a3a4d; border-radius: 4px; color: #c6d4df; font-size: 14px; padding: 8px; margin-bottom: 10px; }
     .tag-search-results { max-height: 150px; overflow-y: auto; border: 1px solid #2a3a4d; border-radius: 4px; }
     .tag-search-result-item { padding: 8px; cursor: pointer; border-bottom: 1px solid #2a3a4d; }
-    .tag-search-result-item:last-child { border-bottom: none; }
     .tag-search-result-item:hover { background: #2a3a4d; }
-    .active-tag-filters-container { margin-top: 15px; }
     .active-tag-filter-row { display: flex; align-items: center; gap: 10px; background: #2a3a4d; padding: 8px; border-radius: 4px; margin-bottom: 8px; }
-    .active-tag-filter-row span { flex-grow: 1; }
-    .active-tag-filter-row input { width: 60px; text-align: center; }
-    .active-tag-filter-row .btn-remove-tag { background-color: #a74343; font-size: 11px; padding: 3px 8px; }
-    .tag-modal-footer { margin-top: 20px; text-align: right; }
+    tr.app td:first-child { position: relative; }
+    .steamdb-tooltip { position: absolute; background: #1b2838; color: #c6d4df; padding: 15px; border-radius: 3px; width: 320px; font-size: 14px; line-height: 1.5; box-shadow: 0 0 12px rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 9999; display: none; }
+    .tooltip-arrow { position: absolute; width: 0; height: 0; border-top: 10px solid transparent; border-bottom: 10px solid transparent; }
+    .group-top { margin-bottom: 8px; } .group-middle { margin-bottom: 12px; } .group-bottom { margin-bottom: 15px; }
+    .tooltip-row { margin-bottom: 4px; } .tooltip-row.compact { margin-bottom: 2px; } .tooltip-row.spaced { margin-bottom: 10px; }
+    .tooltip-row.language { margin-bottom: 8px; } .tooltip-row.description { margin-top: 15px; padding-top: 10px; border-top: 1px solid #2a3a4d; color: #8f98a0; font-style: italic; }
+    .positive { color: #66c0f4; } .mixed { color: #997a00; } .negative { color: #a74343; } .no-reviews { color: #929396; } .language-yes { color: #66c0f4; } .language-no { color: #a74343; } .early-access-yes { color: #66c0f4; } .early-access-no { color: #929396; } .no-data { color: #929396; }
     `;
 
     function extractAndDisplayGameDataSteamStyle() {
@@ -831,6 +792,15 @@
     }
 
     async function init() {
+        try {
+            const statusRes = await new Promise((res, rej) => {
+                GM_xmlhttpRequest({ method: "GET", url: "http://localhost:8080/status", timeout: 2000, onload: res, onerror: rej, ontimeout: rej });
+            });
+            isPicsServerAvailable = (statusRes.status === 200);
+        } catch(e) {
+            isPicsServerAvailable = false;
+        }
+
         currentLocalCC = getCurrentCurrency();
         await fetchAndStoreTags();
 
@@ -840,10 +810,16 @@
 
         createTagFilterModal();
 
-        const header = document.querySelector('.header-title');
-        if (header) {
+        let injectionTarget = document.querySelector('.dataTables_wrapper') || document.querySelector('table.table-sales') || document.querySelector('table#DataTables_Table_0');
+        if (!injectionTarget) {
+            const header = document.querySelector('.header-title');
+            if (header) injectionTarget = header.nextElementSibling;
+        }
+
+        if (injectionTarget && injectionTarget.parentNode) {
             const filtersContainer = createFiltersContainer();
-            header.parentNode.insertBefore(filtersContainer, header.nextElementSibling);
+            injectionTarget.parentNode.insertBefore(filtersContainer, injectionTarget);
+
             processButton = document.getElementById('process-btn');
             if(processButton) {
                 processButton.addEventListener('click', () => {
@@ -852,6 +828,15 @@
                 });
             }
             filtersContainer.addEventListener('click', handleMainPanelClick);
+
+            const regionSelect = document.getElementById('region-check-select');
+            if (regionSelect) {
+                regionSelect.addEventListener('change', (e) => {
+                    selectedRegionCheck = e.target.value;
+                    injectAllRestrictionDisplays();
+                    applyAllFilters();
+                });
+            }
 
             document.getElementById('review-min-count').addEventListener('input', handleReviewFilterChange);
             document.getElementById('review-max-count').addEventListener('input', handleReviewFilterChange);
@@ -1091,7 +1076,8 @@
     }
 
     function injectAllRrcDisplays() {
-        if (currentLocalCC === 'us') {
+        const isUnavailablePage = window.location.pathname.includes('/stats/pricesnotavailable/');
+        if (currentLocalCC === 'us' || isUnavailablePage) {
             document.querySelectorAll('.rrc-display-container').forEach(el => el.remove());
             return;
         }
@@ -1105,25 +1091,19 @@
         let rrcFilterHTML = '';
         if (currentLocalCC !== 'us') {
             rrcFilterHTML = `
-            <div class="control-group" id="rrc-filter-control-group">
-                <div class="group-title">Фильтры РРЦ</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-                    <div class="btn-group" style="flex-direction: column;">
-                        <button class="btn" style="justify-content: center;" data-filter-rrc="valve_lower" title="Дешевле Valve">&lt; Valve</button>
-                        <button class="btn" style="justify-content: center;" data-filter-rrc="valve_equal" title="Соответствует Valve">= Valve</button>
-                        <button class="btn" style="justify-content: center;" data-filter-rrc="valve_higher" title="Дороже Valve">&gt; Valve</button>
-                    </div>
-                    <div class="btn-group" style="flex-direction: column;">
-                        <button class="btn" style="justify-content: center;" data-filter-rrc="parity_lower" title="Дешевле ППС">&lt; ППС</button>
-                        <button class="btn" style="justify-content: center;" data-filter-rrc="parity_equal" title="Соответствует ППС">= ППС</button>
-                        <button class="btn" style="justify-content: center;" data-filter-rrc="parity_higher" title="Дороже ППС">&gt; ППС</button>
-                    </div>
-                    <div class="btn-group" style="flex-direction: column;">
-                        <button class="btn" style="justify-content: center;" data-filter-rrc="fx_lower" title="Дешевле Курса">&lt; Курс</button>
-                        <button class="btn" style="justify-content: center;" data-filter-rrc="fx_equal" title="Соответствует Курсу">= Курс</button>
-                        <button class="btn" style="justify-content: center;" data-filter-rrc="fx_higher" title="Дороже Курса">&gt; Курс</button>
-                    </div>
-                </div>
+            <div class="enh-group" id="rrc-filter-control-group">
+                <span class="enh-label">РРЦ Valve:</span>
+                <button class="btn" data-filter-rrc="valve_lower" title="Дешевле">&lt;</button>
+                <button class="btn" data-filter-rrc="valve_equal" title="Равно">=</button>
+                <button class="btn" data-filter-rrc="valve_higher" title="Дороже">&gt;</button>
+                <span class="enh-label" style="margin-left:5px;">ППС:</span>
+                <button class="btn" data-filter-rrc="parity_lower" title="Дешевле">&lt;</button>
+                <button class="btn" data-filter-rrc="parity_equal" title="Равно">=</button>
+                <button class="btn" data-filter-rrc="parity_higher" title="Дороже">&gt;</button>
+                <span class="enh-label" style="margin-left:5px;">Курс:</span>
+                <button class="btn" data-filter-rrc="fx_lower" title="Дешевле">&lt;</button>
+                <button class="btn" data-filter-rrc="fx_equal" title="Равно">=</button>
+                <button class="btn" data-filter-rrc="fx_higher" title="Дороже">&gt;</button>
             </div>`;
         }
 
@@ -1131,97 +1111,98 @@
         const isWishlistMode = document.querySelector('input[name="displayOnly"][value="Wishlist"]:checked') !== null;
         if (isWishlistMode) {
             wishlistCalculatorHTML = `
-                <div class="control-group" id="wishlist-calculator-group">
-                    <div class="group-title">Калькулятор желаемого</div>
-                    <button class="btn" data-action="calculate-wishlist">${PROCESS_BUTTON_TEXT.calculate_wishlist_idle}</button>
-                </div>`;
+            <div class="enh-group enh-group-transparent" style="margin-left: auto;">
+                <button class="btn" data-action="calculate-wishlist">${PROCESS_BUTTON_TEXT.calculate_wishlist_idle}</button>
+            </div>`;
+        }
+
+        let regionFilterHTML = '';
+        if (isPicsServerAvailable) {
+            const allRegions = Array.from(new Set(Object.values(STEAMDB_COUNTRY_MAP).map(c => c.apiCC).concat(['BY']))).sort();
+            const regionOptions = allRegions.map(r => `<option value="${r}" ${selectedRegionCheck === r ? 'selected' : ''}>${r}</option>`).join('');
+
+            regionFilterHTML = `
+            <div class="enh-group">
+                <span class="enh-label">Регион:</span>
+                <select class="input-field enh-select" id="region-check-select">
+                    ${regionOptions}
+                </select>
+                <button class="btn ${regionAccessFilter === 'available' ? 'active' : ''}" data-action="region-available">Доступно</button>
+                <button class="btn ${regionAccessFilter === 'unavailable' ? 'active' : ''}" data-action="region-unavailable">Недоступно</button>
+            </div>`;
         }
 
         container.innerHTML = `
-        <div class="enhancer-header">
-            <button class="btn" id="process-btn">
+        <!-- Ряд 1: Главная кнопка и прогресс -->
+        <div class="enh-row" style="background: #111923; padding: 8px; border-radius: 4px; border: 1px solid #1e2c3e;">
+            <button class="btn process-btn" id="process-btn">
                 <svg class="btn-icon" viewBox="0 0 24 24"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.8.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg>
                 <span id="process-btn-text">${PROCESS_BUTTON_TEXT.idle}</span>
             </button>
-            <div class="status-indicator status-inactive">${currentLocalCC !== 'us' ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled}</div>
+            <span class="status-indicator">${currentLocalCC !== 'us' ? STATUS_TEXT.ready_to_process : STATUS_TEXT.rrc_disabled}</span>
+            <div class="enh-progress-wrapper">
+                <div class="progress-text"><span class="progress-count">0/0</span> <span class="progress-percent">(0%)</span></div>
+                <div class="progress-container"><div class="progress-bar"></div></div>
+            </div>
         </div>
-        <div class="progress-container"><div class="progress-bar"></div></div>
-        <div class="progress-text">
-            <span class="progress-count">0/0</span>
-            <span class="progress-percent">(0%)</span>
-        </div>
-        <div class="row-layout">
-            <div class="control-group">
-                <div class="group-title">Русский перевод</div>
-                <div class="btn-group">
-                    <button class="btn" data-filter="russian-any">Только текст</button>
-                    <button class="btn" data-filter="russian-audio">Озвучка</button>
-                    <button class="btn" data-filter="no-russian">Без перевода</button>
-                </div>
-            </div>
-            <div class="control-group">
-                <div class="group-title">Списки</div>
-                <div class="btn-group">
-                    <button class="btn" data-action="list1">Список 1</button>
-                    <button class="btn" data-action="list2">Список 2</button>
-                    <button class="btn" data-action="list-filter">Фильтр списков</button>
-                </div>
-            </div>
-            ${wishlistCalculatorHTML}
-            ${rrcFilterHTML}
-            <div class="control-group">
-                <div class="group-title">Метки</div>
-                <div class="btn-group">
-                    <button class="btn" data-action="open-tag-modal">Настройка меток</button>
-                </div>
-            </div>
-            <div class="control-group">
-                <div class="group-title">Дополнительные инструменты</div>
-                <div class="row-layout compact">
-                    <div class="converter-group">
-                        <input type="number" class="input-field" id="exchange-rate-input" value="${DEFAULT_EXCHANGE_RATE}" step="0.01">
-                        <button class="btn" data-action="convert">Конвертировать</button>
-                    </div>
-                    <div class="btn-group">
-                        <input type="date" class="date-picker">
-                        <button class="btn" data-action="date-filter">Фильтр по дате</button>
-                    </div>
-                </div>
-            </div>
 
-            <div class="control-group">
-                <div class="group-title">Обзоры</div>
-                <div class="review-filter-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center;">
-                    <div>
-                        <label for="review-min-count" style="font-size: 11px; color: #a0b0c0;">Кол-во обзоров</label>
-                        <div style="display: flex; gap: 5px;">
-                            <input type="number" class="input-field" id="review-min-count" placeholder="Мин" style="width: 100%;">
-                            <input type="number" class="input-field" id="review-max-count" placeholder="Макс" style="width: 100%;">
-                        </div>
-                    </div>
-                    <div>
-                        <label for="review-min-rating" style="font-size: 11px; color: #a0b0c0;">Рейтинг (%)</label>
-                        <div style="display: flex; gap: 5px;">
-                            <input type="number" class="input-field" id="review-min-rating" placeholder="Мин" style="width: 100%;" min="0" max="100">
-                            <input type="number" class="input-field" id="review-max-rating" placeholder="Макс" style="width: 100%;" min="0" max="100">
-                        </div>
-                    </div>
-                    <div style="grid-column: 1 / -1; margin-top: 5px;">
-                        <label class="steamy-checkbox-control" style="font-size:13px; color: #c6d4df;">
-                            <input type="checkbox" id="total-sort-checkbox" data-action="toggle-total-sort">
-                            <span>Тотальная сортировка (кол-во * %)</span>
-                        </label>
-                    </div>
-                </div>
+        <!-- Ряд 2: Базовые фильтры -->
+        <div class="enh-row">
+            <div class="enh-group">
+                <span class="enh-label">Язык:</span>
+                <button class="btn" data-filter="russian-any">Текст</button>
+                <button class="btn" data-filter="russian-audio">Озвучка</button>
+                <button class="btn" data-filter="no-russian">Без ру</button>
             </div>
-            <div class="control-group">
-                <div class="group-title">Ранний доступ</div>
-                <div class="btn-group">
-                    <button class="btn" data-action="ea-show">Только игры с ранним доступом</button>
-                    <button class="btn" data-action="ea-hide">Скрыть игры с ранним доступом</button>
-                </div>
+            ${regionFilterHTML}
+            <div class="enh-group">
+                <span class="enh-label">Списки:</span>
+                <button class="btn" data-action="list1">Сп. 1</button>
+                <button class="btn" data-action="list2">Сп. 2</button>
+                <button class="btn" data-action="list-filter">Фильтр</button>
             </div>
-            </div>`;
+            <div class="enh-group">
+                <span class="enh-label">Ранний доступ:</span>
+                <button class="btn" data-action="ea-show">Только</button>
+                <button class="btn" data-action="ea-hide">Скрыть</button>
+            </div>
+            <div class="enh-group enh-group-transparent">
+                <button class="btn" data-action="open-tag-modal">Метки</button>
+            </div>
+        </div>
+
+        <!-- Ряд 3: Обзоры и Инструменты -->
+        <div class="enh-row">
+            <div class="enh-group">
+                <span class="enh-label">Обзоры (шт):</span>
+                <input class="input-field" id="review-min-count" placeholder="Мин" style="width: 45px;">
+                <input class="input-field" id="review-max-count" placeholder="Макс" style="width: 45px;">
+                <span class="enh-label" style="margin-left: 5px;">Рейтинг (%):</span>
+                <input class="input-field" id="review-min-rating" placeholder="Мин" min="0" max="100" style="width: 40px;">
+                <input class="input-field" id="review-max-rating" placeholder="Макс" min="0" max="100" style="width: 40px;">
+            </div>
+            <label style="font-size: 11px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="total-sort-checkbox" data-action="toggle-total-sort" style="margin: 0;"> Тотал. сорт
+            </label>
+            <div class="enh-group" style="margin-left: auto;">
+                <span class="enh-label">Конверт:</span>
+                <input type="number" class="input-field" id="exchange-rate-input" value="${DEFAULT_EXCHANGE_RATE}" step="0.01" style="width: 50px;">
+                <button class="btn" data-action="convert">ОК</button>
+            </div>
+            <div class="enh-group">
+                <span class="enh-label">Дата:</span>
+                <input type="date" class="input-field" style="width: 105px;">
+                <button class="btn" data-action="date-filter">ОК</button>
+            </div>
+        </div>
+
+        <!-- Ряд 4: РРЦ и Желаемое (если применимо) -->
+        ${(rrcFilterHTML || wishlistCalculatorHTML) ? `
+        <div class="enh-row">
+            ${rrcFilterHTML}
+            ${wishlistCalculatorHTML}
+        </div>` : ''}
+        `;
 
         if (currentLocalCC === 'us') {
             const rrcGroup = container.querySelector('#rrc-filter-control-group');
@@ -1452,6 +1433,32 @@
                     btn.classList.add('active');
                     if (eaShowBtn) eaShowBtn.classList.remove('active');
                     earlyAccessFilter = 'hide';
+                }
+                applyAllFilters();
+                break;
+            }
+            case 'region-available': {
+                const unavailBtn = document.querySelector('[data-action="region-unavailable"]');
+                if (btn.classList.contains('active')) {
+                    btn.classList.remove('active');
+                    regionAccessFilter = 'none';
+                } else {
+                    btn.classList.add('active');
+                    if (unavailBtn) unavailBtn.classList.remove('active');
+                    regionAccessFilter = 'available';
+                }
+                applyAllFilters();
+                break;
+            }
+            case 'region-unavailable': {
+                const availBtn = document.querySelector('[data-action="region-available"]');
+                if (btn.classList.contains('active')) {
+                    btn.classList.remove('active');
+                    regionAccessFilter = 'none';
+                } else {
+                    btn.classList.add('active');
+                    if (availBtn) availBtn.classList.remove('active');
+                    regionAccessFilter = 'unavailable';
                 }
                 applyAllFilters();
                 break;
@@ -1711,6 +1718,13 @@
                     visible = false;
                 }
 
+                if (regionAccessFilter === 'available' && data.restricted_countries && data.restricted_countries.includes(selectedRegionCheck)) {
+                    visible = false;
+                }
+                if (regionAccessFilter === 'unavailable' && (!data.restricted_countries || !data.restricted_countries.includes(selectedRegionCheck))) {
+                    visible = false;
+                }
+
                 if (reviewFilters.minCount !== null && (data.review_count || 0) < reviewFilters.minCount) {
                     visible = false;
                 }
@@ -1723,7 +1737,7 @@
                 if (reviewFilters.maxRating !== null && (data.percent_positive || 0) > reviewFilters.maxRating) {
                     visible = false;
                 }
-            } else if (visible && (reviewFilters.minCount || reviewFilters.maxCount || reviewFilters.minRating || reviewFilters.maxRating || earlyAccessFilter !== 'none') && !data && isProcessingStarted) {
+            } else if (visible && (reviewFilters.minCount || reviewFilters.maxCount || reviewFilters.minRating || reviewFilters.maxRating || earlyAccessFilter !== 'none' || regionAccessFilter !== 'none') && !data && isProcessingStarted) {
                 visible = false;
             }
 
@@ -1754,6 +1768,9 @@
             if (!gameData[item.id]) gameData[item.id] = {};
             const purchaseOption = item.best_purchase_option || item.purchase_options?.[0];
             gameData[item.id].tagids = item.tagids || [];
+            if (purchaseOption && purchaseOption.packageid) {
+                gameData[item.id].packageid = purchaseOption.packageid;
+            }
 
             if (stage === 'LOCAL') {
                 if (!gameData[item.id].franchises) {
@@ -1768,6 +1785,21 @@
                 gameData[item.id].price_local_initial_cents = getPriceInCents(purchaseOption);
                 processedLocalGames++;
             } else if (stage === 'US') {
+                if (gameData[item.id].percent_positive === undefined && item.reviews) {
+                    gameData[item.id].franchises = item.basic_info?.franchises?.map(f => f.name).join(', ');
+                    gameData[item.id].percent_positive = item.reviews?.summary_filtered?.percent_positive;
+                    gameData[item.id].review_count = item.reviews?.summary_filtered?.review_count;
+                    gameData[item.id].is_early_access = item.is_early_access;
+                    gameData[item.id].short_description = item.basic_info?.short_description;
+
+                    if (!gameData[item.id].language_support_russian) {
+                        gameData[item.id].language_support_russian = item.supported_languages?.find(l => l.elanguage === 8);
+                    }
+                    if (!gameData[item.id].language_support_english) {
+                        gameData[item.id].language_support_english = item.supported_languages?.find(l => l.elanguage === 0);
+                    }
+                }
+
                 gameData[item.id].price_us_initial_cents = getPriceInCents(purchaseOption);
                 processedUsGames++;
             }
@@ -1775,12 +1807,86 @@
         updateProgress();
     }
 
+    async function fetchPicsData(appIds) {
+        if (!isPicsServerAvailable) return;
+
+        const packageIdToAppIdList = {};
+        const subIdsToFetch = new Set();
+
+        appIds.forEach(appId => {
+            const data = gameData[appId];
+            if (data && data.packageid) {
+                if (!packageIdToAppIdList[data.packageid]) packageIdToAppIdList[data.packageid] = [];
+                packageIdToAppIdList[data.packageid].push(appId);
+                subIdsToFetch.add(data.packageid);
+            }
+        });
+
+        if (subIdsToFetch.size === 0) return;
+
+        try {
+            const response = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: `http://localhost:8080/pics?subids=${Array.from(subIdsToFetch).join(',')}`,
+                    onload: resolve,
+                    onerror: reject,
+                    ontimeout: reject
+                });
+            });
+
+            if (response.status === 200) {
+                const picsData = JSON.parse(response.responseText);
+                for (const [subId, info] of Object.entries(picsData)) {
+                    if (info && info.extended) {
+                        const restrictedKey = Object.keys(info.extended).find(k => k.toLowerCase() === 'purchaserestrictedcountries');
+                        const restrictedStr = restrictedKey ? info.extended[restrictedKey] : '';
+
+                        if (packageIdToAppIdList[subId]) {
+                            packageIdToAppIdList[subId].forEach(appId => {
+                                gameData[appId].restricted_countries = restrictedStr;
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("SteamDB Enhancer: Ошибка запроса к локальному PICS серверу.", e);
+        }
+    }
+
+    function injectAllRestrictionDisplays() {
+        if (!isPicsServerAvailable) return;
+        const hasRrc = currentLocalCC !== 'us' && !window.location.pathname.includes('/stats/pricesnotavailable/');
+
+        document.querySelectorAll('tr.app[data-appid]').forEach(row => {
+            const appId = row.dataset.appid;
+            const data = gameData[appId];
+            if (!data) return;
+
+            let existingBadge = row.querySelector('.restriction-badge');
+            if (existingBadge) existingBadge.remove();
+
+            if (data.restricted_countries && data.restricted_countries.includes(selectedRegionCheck)) {
+                const targetCell = row.querySelector('td:first-child');
+                if (targetCell) {
+                    const badge = document.createElement('div');
+                    badge.className = 'restriction-badge' + (hasRrc ? ' has-rrc' : '');
+                    badge.title = `Покупка недоступна в регионе: ${selectedRegionCheck} (Ограничение PICS)`;
+                    badge.textContent = `NO ${selectedRegionCheck}`;
+                    targetCell.appendChild(badge);
+                }
+            }
+        });
+    }
+
     async function processRequestQueue() {
         if (isProcessingQueue || !requestQueue.length) {
             if (isProcessingQueue) return;
-
             if (currentProcessingStage === 'LOCAL' && processedLocalGames >= totalGamesOnPage) {
-                if (currentLocalCC !== 'us') {
+                const isUnavailablePage = window.location.pathname.includes('/stats/pricesnotavailable/');
+
+                if (currentLocalCC !== 'us' || isUnavailablePage) {
                     currentProcessingStage = 'US';
                     updateButtonAndStatus(PROCESS_BUTTON_TEXT.processing_us, STATUS_TEXT.processing_us);
                     const usBatches = Array.from(collectedAppIds).reduce((acc, id, i) => {
@@ -1788,11 +1894,15 @@
                         acc[acc.length - 1].push(id);
                         return acc;
                     }, []);
-                    requestQueue.push(...usBatches.map(batch => ({ batch, stage: 'US', lang: 'english', cc: 'us' })));
+
+                    const secondStageCC = isUnavailablePage ? 'eu' : 'us';
+
+                    requestQueue.push(...usBatches.map(batch => ({ batch, stage: 'US', lang: 'english', cc: secondStageCC })));
                     updateProgress();
                     await processRequestQueue();
                 } else {
                     applyAllFilters();
+                    injectAllRestrictionDisplays();
                     isProcessingStarted = false;
                     updateButtonAndStatus(PROCESS_BUTTON_TEXT.done, STATUS_TEXT.done, true, true);
                     updateReviewFilterPlaceholders();
@@ -1800,6 +1910,7 @@
             } else if (currentProcessingStage === 'US' && processedUsGames >= totalGamesOnPage) {
                 updateButtonAndStatus(PROCESS_BUTTON_TEXT.done, STATUS_TEXT.processing_rrc, true, false);
                 injectAllRrcDisplays();
+                injectAllRestrictionDisplays();
                 applyAllFilters();
                 isProcessingStarted = false;
                 updateButtonAndStatus(PROCESS_BUTTON_TEXT.done, STATUS_TEXT.done, true, true);
@@ -1810,9 +1921,11 @@
 
         isProcessingQueue = true;
         const { batch: currentBatch, stage: batchStage, lang: batchLang, cc: batchCC } = requestQueue.shift();
-
         try {
             await fetchGameData(currentBatch, batchCC, batchLang, batchStage);
+            if (batchStage === 'LOCAL') {
+                await fetchPicsData(currentBatch);
+            }
             await new Promise(r => setTimeout(r, REQUEST_DELAY));
         } catch (error) {
             if (batchStage === 'LOCAL') processedLocalGames += currentBatch.length;
@@ -1835,7 +1948,7 @@
                 context: { language: language, country_code: apiCountryCode, steam_realm: 1 },
                 data_request: {
                     include_assets: false, include_release: true, include_platforms: false,
-                    include_all_purchase_options: true, include_screenshots: false, include_trailers: false,
+                    include_all_purchase_options: false, include_screenshots: false, include_trailers: false,
                     include_ratings: true, include_tag_count: true, include_reviews: true,
                     include_basic_info: true, include_supported_languages: true,
                     include_full_description: false, include_included_items: false
@@ -1894,7 +2007,6 @@
         }
 
         currentLocalCC = getCurrentCurrency();
-
         if (currentLocalCC !== 'us') {
             updateButtonAndStatus("Загрузка...", STATUS_TEXT.fetching_matrix, false, false);
             await fetchSteamPricingMatrix();
@@ -1906,9 +2018,14 @@
             return acc;
         }, []);
 
+        const isUnavailablePage = window.location.pathname.includes('/stats/pricesnotavailable/');
         currentProcessingStage = 'LOCAL';
+
+        const firstStageCC = isUnavailablePage ? 'us' : currentLocalCC;
+        const firstStageLang = isUnavailablePage ? 'english' : 'russian';
+
         updateButtonAndStatus(PROCESS_BUTTON_TEXT.processing_local, STATUS_TEXT.processing_local);
-        requestQueue = batches.map(batch => ({ batch, stage: 'LOCAL', lang: 'russian', cc: currentLocalCC }));
+        requestQueue = batches.map(batch => ({ batch, stage: 'LOCAL', lang: firstStageLang, cc: firstStageCC }));
 
         updateProgress();
         await processRequestQueue();
@@ -2017,12 +2134,8 @@
     function reinitializePanel() {
         const oldFiltersContainer = document.querySelector('.steamdb-enhancer');
         if (oldFiltersContainer) {
-            const parent = oldFiltersContainer.parentNode;
-            const nextSibling = oldFiltersContainer.nextElementSibling;
-            oldFiltersContainer.remove();
-
             const newFiltersContainer = createFiltersContainer();
-            parent.insertBefore(newFiltersContainer, nextSibling);
+            oldFiltersContainer.replaceWith(newFiltersContainer);
 
             processButton = document.getElementById('process-btn');
             if(processButton) {
@@ -2032,6 +2145,15 @@
                 });
             }
             newFiltersContainer.addEventListener('click', handleMainPanelClick);
+
+            const regionSelect = document.getElementById('region-check-select');
+            if (regionSelect) {
+                regionSelect.addEventListener('change', (e) => {
+                    selectedRegionCheck = e.target.value;
+                    injectAllRestrictionDisplays();
+                    applyAllFilters();
+                });
+            }
         }
         updateUiForCurrencyMode();
         document.querySelectorAll('tr.app[data-appid]').forEach(row => processAndStyleAtlDiscount(row));
